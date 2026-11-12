@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BI Itah · Entrar</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" href="/img/favicon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BI Itah">
+  <meta name="theme-color" content="#0b3f8a">
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="login" id="form" autocomplete="on">
+      <img class="login-logo" src="/img/logo.png" alt="BI Itah">
+      <h1>BI Itah</h1>
+      <p>Entre com o seu usuário do sistema.</p>
+      <label>Usuário
+        <input name="login" id="login" autocomplete="username" required autofocus>
+      </label>
+      <label>Senha
+        <input name="senha" id="senha" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn" type="submit" id="entrar">Entrar</button>
+      <div class="erro" id="erro"></div>
+      <button class="btn-instalar" type="button" hidden>📲 Instalar o app no celular / computador</button>
+    </form>
+  </div>
+  <script src="/js/login.js"></script>
+  <script src="/js/instalar.js"></script>
+</body>
+</html>

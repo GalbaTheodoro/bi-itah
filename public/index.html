@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BI Itah</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" href="/img/favicon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="BI Itah">
+  <meta name="theme-color" content="#0b3f8a">
+</head>
+<body>
+  <header class="topo">
+    <div class="logo"><img src="/img/logo.png" alt="">BI Itah</div>
+    <button class="hamb" id="hamb" type="button" aria-label="Menu">☰</button>
+    <nav id="menu"></nav>
+    <div class="user"><button class="btn-instalar" type="button" hidden>📲 Instalar app</button><span id="usuario"></span><button id="sair" type="button">Sair</button></div>
+  </header>
+  <main id="conteudo"></main>
+
+  <script src="/vendor/chart.js"></script>
+  <script src="/js/app.js"></script>
+  <!-- Cada relatório é um arquivo. Para criar um novo, copie rel-comparativo.js e registre com BI.registrar(...) -->
+  <script src="/js/rel-comparativo.js"></script>
+  <script src="/js/rel-gs.js"></script>
+  <script src="/js/rel-compravenda.js"></script>
+  <script src="/js/rel-lucro.js"></script>
+  <script src="/js/rel-acessos.js"></script>
+  <script>BI.iniciar();</script>
+  <script src="/js/instalar.js"></script>
+</body>
+</html>

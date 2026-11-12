@@ -1,0 +1,9 @@
+node_modules/
+.env
+.vercel/
+explorar.txt
+diagnostico.txt
+npm-install.log
+config/acessos.json
+*.log
+.env

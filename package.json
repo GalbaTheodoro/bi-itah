@@ -1,0 +1,22 @@
+{
+  "name": "bi-itah",
+  "version": "1.0.0",
+  "description": "BI Itah - relatórios responsivos com login pela tb_usuario",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node server.js --demo",
+    "descobrir-usuario": "node scripts/descobrir-usuario.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "chart.js": "^4.4.4",
+    "cookie-session": "^2.1.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "mssql": "^11.0.1"
+  }
+}

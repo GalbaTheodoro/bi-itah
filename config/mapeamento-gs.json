@@ -1,0 +1,44 @@
+{
+  "_leia": "Liga as PENEIRAS da classificação do café despejado aos GRUPOS de comparação, e os TIPOS DE PRODUTO do resultado aos mesmos grupos. Tipos que não estiverem em 'tipos' são ligados automaticamente pelas regras (números da peneira, MOKA, ESCOLHA, FDO, RES/VENTO/PO...). Para corrigir um tipo, adicione em 'tipos'. Para dividir um tipo entre grupos use uma lista, ex.: \"14/MOKA\": [\"14\", \"Moka\"]. Depois de salvar, reinicie o BI.",
+  "grupos": [
+    "17/18",
+    "16",
+    "15",
+    "14",
+    "13 e menores",
+    "Moka",
+    "Catação/Escolha/Grinders",
+    "Catação/Escolha",
+    "Grinders",
+    "Fundo",
+    "Resíduo/Perdas",
+    "Outros"
+  ],
+  "_juntar": "Grupos que devem ser somados em um só (ex.: grinders e escolha saem da catação). Apague uma linha para separar de novo.",
+  "juntar": {
+    "Catação/Escolha": "Catação/Escolha/Grinders",
+    "Grinders": "Catação/Escolha/Grinders"
+  },
+  "peneiras": {
+    "#18": "17/18",
+    "#17": "17/18",
+    "#16": "16",
+    "#15": "15",
+    "#14": "14",
+    "#13": "13 e menores",
+    "#12": "13 e menores",
+    "#11": "13 e menores",
+    "#10": "13 e menores",
+    "MOKA10": "Moka",
+    "MOKA11": "Moka",
+    "MOKA12": "Moka",
+    "CATAÇÃO": "Catação/Escolha",
+    "FUNDO": "Fundo"
+  },
+  "tipos": {
+    "ESCOLHA": "Catação/Escolha",
+    "FDO": "Fundo",
+    "BAIXO": "Resíduo/Perdas",
+    "REAP": "Outros"
+  }
+}
