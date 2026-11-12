@@ -205,24 +205,27 @@ app.use((err, req, res, next) => {
 
 // Na Vercel o app é exportado (sem listen) e o disco é só leitura
 module.exports = app;
-if (process.env.VERCEL) return;
 
-const PORT = Number(process.env.PORT) || 3000;
-// Ao iniciar ligado no banco, grava explorar.txt (consultas só de leitura da estrutura) para ajudar a configurar relatórios
-if (!DEMO) {
-  const { execFile } = require('child_process');
-  execFile(process.execPath, [path.join(__dirname, 'scripts', 'explorar.js')], { cwd: __dirname, timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (err, out, errOut) => {
-    try { require('fs').writeFileSync(path.join(__dirname, 'explorar.txt'), (out || '') + (errOut || '') + (err ? '\nERRO: ' + err.message : '')); } catch (_) {}
+// No computador: sobe o servidor. Na Vercel quem chama o app é a própria Vercel.
+if (!process.env.VERCEL) {
+
+  const PORT = Number(process.env.PORT) || 3000;
+  // Ao iniciar ligado no banco, grava explorar.txt (consultas só de leitura da estrutura) para ajudar a configurar relatórios
+  if (!DEMO) {
+    const { execFile } = require('child_process');
+    execFile(process.execPath, [path.join(__dirname, 'scripts', 'explorar.js')], { cwd: __dirname, timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (err, out, errOut) => {
+      try { require('fs').writeFileSync(path.join(__dirname, 'explorar.txt'), (out || '') + (errOut || '') + (err ? '\nERRO: ' + err.message : '')); } catch (_) {}
+    });
+  }
+
+  const servidor = app.listen(PORT, () => {
+    console.log(`BI Itah rodando em http://localhost:${PORT}${DEMO ? '  (MODO DEMO - login demo / demo)' : ''}`);
+  });
+  servidor.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\nA porta ${PORT} ja esta em uso: o BI Itah provavelmente ja esta aberto em outra janela.`);
+      console.error('Feche a outra janela preta e rode de novo, ou troque PORT no arquivo .env.\n');
+    } else console.error(err);
+    process.exit(1);
   });
 }
-
-const servidor = app.listen(PORT, () => {
-  console.log(`BI Itah rodando em http://localhost:${PORT}${DEMO ? '  (MODO DEMO - login demo / demo)' : ''}`);
-});
-servidor.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`\nA porta ${PORT} ja esta em uso: o BI Itah provavelmente ja esta aberto em outra janela.`);
-    console.error('Feche a outra janela preta e rode de novo, ou troque PORT no arquivo .env.\n');
-  } else console.error(err);
-  process.exit(1);
-});
