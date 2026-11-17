@@ -219,3 +219,47 @@ async function carregarRastreio({ db, forcar = false }) {
 }
 
 module.exports.carregarRastreio = carregarRastreio;
+
+// ================= Embarque: amostra vendida x lotes embarcados =================
+// Guia de embarque/saída (TB_GSBX) -> contrato de venda (da linha ou da guia) -> amostra do contrato
+const CONTRATO_GUIA = `c.id = ISNULL(NULLIF(gs.IDContratoVenda, 0), g.IDContrato)`;
+const SQL_EMB_AMOSTRA = `
+SELECT DISTINCT g.ID AS gsbx, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data, c.Numero AS contrato,
+       LEFT(d.Nome, 40) AS cliente, a.Numero AS amostra, td.defeito AS defeito, p.classificacao AS peneira, bc.percentual
+  FROM TB_GSBX g
+ INNER JOIN TB_GSBX_SAIDA gs            ON gs.IDGSBX = g.ID
+ INNER JOIN tb_contrato_cv c            ON ${CONTRATO_GUIA}
+  LEFT JOIN tb_domicilio d              ON d.id = c.IDDomicilio
+ INNER JOIN TB_CONTRATO_AMOSTRA ca      ON ca.IDContrato = c.id
+ INNER JOIN tb_amostra a                ON a.id = ca.IDAmostra
+  LEFT JOIN tb_tipo_defeito td          ON td.id = a.idtipodefeito
+  LEFT JOIN TB_BLEND_CLASSIFICACAO bc   ON bc.idamostra = a.id AND bc.percentual > 0
+  LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = bc.idpeneira
+ WHERE g.dataExclusao IS NULL`;
+const SQL_EMB_LOTES = `
+SELECT g.ID AS gsbx, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data, c.Numero AS contrato, LEFT(d.Nome, 40) AS cliente,
+       gs.ID AS linha, l.Numero AS lote, gs.Volume AS volume, tp.Nome AS tipo, l.Defeito AS defeitoLote, tdl.defeito AS defeitoTipo,
+       l.Umidade AS umidade, p.classificacao AS peneira, lc.percentual
+  FROM TB_GSBX_SAIDA gs
+ INNER JOIN TB_GSBX g                   ON g.ID = gs.IDGSBX
+  LEFT JOIN tb_contrato_cv c            ON ${CONTRATO_GUIA}
+  LEFT JOIN tb_domicilio d              ON d.id = c.IDDomicilio
+ INNER JOIN tb_lote l                   ON l.id = gs.IDLote
+  LEFT JOIN TB_TIPO_PRODUTO tp          ON tp.id = l.IDTipo_Prod
+  LEFT JOIN tb_tipo_defeito tdl         ON tdl.id = l.IDTIPODEFEITO
+  LEFT JOIN tb_lote_classificacao lc    ON lc.idlote = l.id AND lc.percentual > 0
+  LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = lc.idpeneira
+ WHERE g.dataExclusao IS NULL AND ISNULL(gs.Volume, 0) > 0`;
+
+const cacheE = { dados: null, quando: 0 };
+async function carregarEmbarque({ db, forcar = false }) {
+  const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
+  if (!forcar && cacheE.dados && Date.now() - cacheE.quando < ttl) return cacheE.dados;
+  const [amostras, lotes] = await Promise.all([db.query(SQL_EMB_AMOSTRA), db.query(SQL_EMB_LOTES)]);
+  cacheE.dados = { amostras, lotes, atualizadoEm: new Date().toISOString() };
+  cacheE.quando = Date.now();
+  return cacheE.dados;
+}
+module.exports.carregarEmbarque = carregarEmbarque;
+module.exports.SQL_EMB_AMOSTRA = SQL_EMB_AMOSTRA;
+module.exports.SQL_EMB_LOTES = SQL_EMB_LOTES;

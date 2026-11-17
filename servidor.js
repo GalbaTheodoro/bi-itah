@@ -11,6 +11,7 @@ const comparativo = require('./src/relatorios/comparativo');
 const relGS = require('./src/relatorios/gs');
 const relCV = require('./src/relatorios/compravenda');
 const relLucro = require('./src/relatorios/lucro');
+const relEmb = require('./src/relatorios/embarque');
 
 const DEMO = process.argv.includes('--demo') || process.env.DEMO === '1';
 // No modo demonstração o usuário demo é administrador
@@ -199,6 +200,16 @@ app.get('/api/lucro', async (req, res, next) => {
     const dolar = Number(String(req.query.dolar || process.env.DOLAR || '').replace(',', '.'));
     const f = { de: data(req.query.de), ate: data(req.query.ate), cliente: req.query.cliente || null, id: req.query.id || null, dolar: dolar > 0 ? dolar : null };
     res.json({ ...relLucro.gerar(d, f), opcoes: relLucro.opcoes(d), atualizadoEm: d.atualizadoEm });
+  } catch (e) { next(e); }
+});
+
+// ----- Relatório 5: Amostra vendida x lotes embarcados -----
+app.get('/api/embarque', async (req, res, next) => {
+  try {
+    if (DEMO) return res.status(400).json({ erro: 'Este relatório precisa do banco (use o iniciar.bat).' });
+    const d = await fontes.carregarEmbarque({ db, forcar: req.query.atualizar === '1' });
+    const data = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
+    res.json({ ...relEmb.gerar(d, { de: data(req.query.de), ate: data(req.query.ate), cliente: req.query.cliente || null, chave: req.query.chave || null }), atualizadoEm: d.atualizadoEm });
   } catch (e) { next(e); }
 });
 

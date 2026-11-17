@@ -15,6 +15,7 @@ const RELATORIOS = [
   { id: 'gs', titulo: 'GS: Despejado × Resultado', api: '/api/gs' },
   { id: 'compravenda', titulo: 'Comprado × Vendido', api: '/api/cv' },
   { id: 'lucro', titulo: 'Lucro por lote', api: '/api/lucro' },
+  { id: 'embarque', titulo: 'Amostra vendida × Embarque', api: '/api/embarque' },
 ];
 const IDS = RELATORIOS.map((r) => r.id);
 
