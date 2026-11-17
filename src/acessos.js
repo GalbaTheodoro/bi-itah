@@ -10,14 +10,23 @@ const path = require('path');
 const ARQ = path.join(__dirname, '..', 'config', 'acessos.json');
 const NO_BANCO = !!process.env.VERCEL || process.env.ACESSOS_NO_BANCO === '1';
 
+// Catálogo dos relatórios. O MENU LATERAL é montado a partir daqui (grupo + ícone),
+// só com o que cada usuário tem liberado. Para um relatório novo: adicione aqui e crie o rel-*.js.
 const RELATORIOS = [
-  { id: 'comparativo', titulo: 'Amostra × Entrada', api: '/api/comparativo' },
-  { id: 'gs', titulo: 'GS: Despejado × Resultado', api: '/api/gs' },
-  { id: 'compravenda', titulo: 'Comprado × Vendido', api: '/api/cv' },
-  { id: 'lucro', titulo: 'Lucro por lote', api: '/api/lucro' },
-  { id: 'embarque', titulo: 'Amostra vendida × Embarque', api: '/api/embarque' },
+  { id: 'comparativo', titulo: 'Amostra × Entrada', api: '/api/comparativo', grupo: 'Qualidade', icone: '🧪' },
+  { id: 'gs', titulo: 'GS: Despejado × Resultado', api: '/api/gs', grupo: 'Qualidade', icone: '⚖️' },
+  { id: 'compravenda', titulo: 'Comprado × Vendido', api: '/api/cv', grupo: 'Comercial', icone: '🔄' },
+  { id: 'lucro', titulo: 'Lucro por lote', api: '/api/lucro', grupo: 'Comercial', icone: '💰' },
+  { id: 'embarque', titulo: 'Amostra vendida × Embarque', api: '/api/embarque', grupo: 'Logística', icone: '🚢' },
 ];
 const IDS = RELATORIOS.map((r) => r.id);
+
+// Itens que não são relatório (só aparecem para administradores)
+const EXTRAS_ADMIN = [
+  { id: 'acessos', titulo: 'Acessos', grupo: 'Administração', icone: '⚙️' },
+];
+// Ordem dos grupos no menu (grupo não listado aqui vai para o fim)
+const ORDEM_GRUPOS = ['Qualidade', 'Comercial', 'Logística', 'Administração'];
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 function admins() { return (process.env.ADMIN_USUARIOS || 'ADM').split(',').map(norm).filter(Boolean); }
@@ -63,6 +72,18 @@ async function permitidos(login) {
   return IDS.filter((id) => lista.includes(id));
 }
 
+// Menu do usuário, agrupado: [{ grupo, itens: [{ id, titulo, icone }] }]
+async function menu(login) {
+  const ok = await permitidos(login);
+  const itens = [...RELATORIOS.filter((r) => ok.includes(r.id)), ...(ehAdmin(login) ? EXTRAS_ADMIN : [])];
+  const nomes = [...new Set(itens.map((i) => i.grupo || 'Relatórios'))]
+    .sort((a, b) => (ORDEM_GRUPOS.indexOf(a) + 1 || 99) - (ORDEM_GRUPOS.indexOf(b) + 1 || 99));
+  return nomes.map((grupo) => ({
+    grupo,
+    itens: itens.filter((i) => (i.grupo || 'Relatórios') === grupo).map(({ id, titulo, icone }) => ({ id, titulo, icone: icone || '📊' })),
+  }));
+}
+
 async function definir(login, ids, quem) {
   const k = norm(login);
   const novos = [...new Set(ids)].filter((x) => IDS.includes(x));
@@ -100,4 +121,4 @@ function exigirAdmin(req, res, next) {
   return res.status(403).json({ erro: 'Só o administrador pode liberar acessos.' });
 }
 
-module.exports = { RELATORIOS, ehAdmin, permitidos, definir, ler, protegerRelatorios, exigirAdmin, usarBanco, NO_BANCO };
+module.exports = { RELATORIOS, ehAdmin, permitidos, menu, definir, ler, protegerRelatorios, exigirAdmin, usarBanco, NO_BANCO };

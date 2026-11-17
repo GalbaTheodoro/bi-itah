@@ -1,4 +1,4 @@
-// Estrutura comum: menu de relatórios, usuário, helpers de formatação e de API.
+// Estrutura comum: menu lateral dinâmico, usuário, helpers de formatação e de API.
 window.BI = (() => {
   const relatorios = [];
   const graficos = new Map();
@@ -43,14 +43,81 @@ window.BI = (() => {
 
   function registrar(r) { relatorios.push(r); }
 
-  let visiveis = [];
+  // ---------- Menu lateral dinâmico ----------
+  // O servidor manda o menu (grupos/ícones) já filtrado pelas permissões do usuário;
+  // só entram itens que têm tela registrada (rel-*.js).
+  let visiveis = [];     // [{ id, titulo, icone, grupo, render }]
+  let grupos = [];       // [{ grupo, itens }]
+  const LS = { recolhido: 'bi-menu-recolhido', fechados: 'bi-menu-grupos-fechados' };
+  const ler = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) ?? padrao; } catch (_) { return padrao; } };
+  const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+  const mobile = () => window.matchMedia('(max-width: 860px)').matches;
+
+  function montarMenu(me) {
+    const porId = new Map(relatorios.map((r) => [r.id, r]));
+    const origem = Array.isArray(me.menu) && me.menu.length
+      ? me.menu
+      // servidor antigo (sem "menu"): monta a partir do que foi registrado
+      : [{ grupo: 'Relatórios', itens: relatorios.filter((r) => (r.admin ? me.admin : (me.permitidos || []).includes(r.id))) }];
+    grupos = origem.map((g) => ({
+      grupo: g.grupo,
+      itens: g.itens.filter((i) => porId.has(i.id)).map((i) => ({
+        ...porId.get(i.id), id: i.id, titulo: i.titulo || porId.get(i.id).titulo, icone: i.icone || porId.get(i.id).icone || '📊', grupo: g.grupo,
+      })),
+    })).filter((g) => g.itens.length);
+    visiveis = grupos.flatMap((g) => g.itens);
+    desenharMenu();
+  }
+
+  function desenharMenu() {
+    const nav = document.getElementById('menu');
+    const termo = (document.getElementById('menu-busca').value || '').trim().toLowerCase();
+    const fechados = ler(LS.fechados, []);
+    const atual = location.hash.slice(1) || (visiveis[0] && visiveis[0].id);
+    const html = grupos.map((g) => {
+      const itens = g.itens.filter((i) => !termo || i.titulo.toLowerCase().includes(termo) || g.grupo.toLowerCase().includes(termo));
+      if (!itens.length) return '';
+      const fechado = !termo && fechados.includes(g.grupo) && !itens.some((i) => i.id === atual);
+      return `<div class="m-grupo${fechado ? ' fechado' : ''}" data-grupo="${esc(g.grupo)}">
+        <button type="button" class="m-grupo-tit" aria-expanded="${!fechado}"><span class="rot">${esc(g.grupo)}</span><span class="seta">▾</span></button>
+        <div class="m-itens">${itens.map((i) => `<a href="#${esc(i.id)}" data-id="${esc(i.id)}" title="${esc(i.titulo)}"${i.id === atual ? ' class="ativo" aria-current="page"' : ''}>
+          <span class="ic">${esc(i.icone)}</span><span class="rot">${esc(i.titulo)}</span></a>`).join('')}</div></div>`;
+    }).join('');
+    nav.innerHTML = html || `<div class="m-vazio">${termo ? 'Nenhum relatório encontrado.' : 'Nenhum relatório liberado.'}</div>`;
+    nav.querySelectorAll('.m-grupo-tit').forEach((b) => b.onclick = () => {
+      const g = b.parentElement, nome = g.dataset.grupo;
+      if (document.body.classList.contains('menu-recolhido') && !mobile()) return;
+      g.classList.toggle('fechado');
+      b.setAttribute('aria-expanded', !g.classList.contains('fechado'));
+      const set = new Set(ler(LS.fechados, []));
+      g.classList.contains('fechado') ? set.add(nome) : set.delete(nome);
+      gravar(LS.fechados, [...set]);
+    });
+  }
+
+  function abrirMenuMobile(abrir) { document.body.classList.toggle('menu-aberto', abrir); }
+
+  function recolher(sim) {
+    document.body.classList.toggle('menu-recolhido', sim);
+    const b = document.getElementById('recolher');
+    b.textContent = sim ? '»' : '«';
+    b.title = sim ? 'Expandir menu' : 'Recolher menu';
+    gravar(LS.recolhido, sim);
+  }
 
   function abrir(id) {
     const main = document.getElementById('conteudo');
     const r = visiveis.find((x) => x.id === id) || visiveis[0];
-    if (!r) { main.innerHTML = '<div class="card vazio">Você ainda não tem acesso a nenhum relatório. Peça ao administrador para liberar.</div>'; return; }
-    document.querySelectorAll('#menu a').forEach((a) => a.classList.toggle('ativo', a.dataset.id === r.id));
-    document.querySelector('.topo').classList.remove('aberto');
+    abrirMenuMobile(false);
+    if (!r) {
+      document.getElementById('titulo-pagina').textContent = '';
+      main.innerHTML = '<div class="card vazio">Você ainda não tem acesso a nenhum relatório. Peça ao administrador para liberar.</div>';
+      return;
+    }
+    document.getElementById('titulo-grupo').textContent = r.grupo || '';
+    document.getElementById('titulo-pagina').textContent = r.titulo;
+    document.title = r.titulo + ' · BI Itah';
+    desenharMenu();
     graficos.forEach((g) => g.destroy()); graficos.clear();
     main.innerHTML = '';
     r.render(main);
@@ -59,12 +126,24 @@ window.BI = (() => {
   async function iniciar() {
     Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     Chart.defaults.color = cor('--muted');
+    recolher(!!ler(LS.recolhido, false));
     const me = await api('/api/me');
-    document.getElementById('usuario').innerHTML = esc(me.usuario.nome) + (me.demo ? ' <span class="demo-tag">DEMO</span>' : '');
+    const nome = me.usuario.nome || me.usuario.login || '';
+    document.getElementById('usuario').innerHTML = esc(nome) + (me.demo ? ' <span class="demo-tag">DEMO</span>' : '');
+    document.getElementById('avatar').textContent = (nome.trim()[0] || '?').toUpperCase();
+    document.getElementById('avatar').title = nome;
     document.getElementById('sair').onclick = async () => { await fetch('/api/logout', { method: 'POST' }); location.href = '/login.html'; };
-    visiveis = relatorios.filter((r) => (r.admin ? me.admin : (me.permitidos || []).includes(r.id)));
-    document.getElementById('menu').innerHTML = visiveis.map((r) => `<a href="#${r.id}" data-id="${r.id}">${esc(r.titulo)}</a>`).join('');
-    document.getElementById('hamb').onclick = () => document.querySelector('.topo').classList.toggle('aberto');
+    document.getElementById('hamb').onclick = () => abrirMenuMobile(true);
+    document.getElementById('fundo-menu').onclick = () => abrirMenuMobile(false);
+    document.getElementById('recolher').onclick = () => (mobile() ? abrirMenuMobile(false) : recolher(!document.body.classList.contains('menu-recolhido')));
+    const busca = document.getElementById('menu-busca');
+    busca.oninput = desenharMenu;
+    busca.onkeydown = (e) => {
+      if (e.key === 'Enter') { const a = document.querySelector('#menu a'); if (a) location.hash = a.dataset.id; busca.value = ''; desenharMenu(); }
+      if (e.key === 'Escape') { busca.value = ''; desenharMenu(); }
+    };
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirMenuMobile(false); });
+    montarMenu(me);
     window.addEventListener('hashchange', () => abrir(location.hash.slice(1)));
     abrir(location.hash.slice(1));
   }

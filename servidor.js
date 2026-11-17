@@ -90,6 +90,7 @@ app.get('/api/me', async (req, res, next) => {
       usuario: req.session.usuario, demo: DEMO,
       admin: acessos.ehAdmin(req.session.usuario.login),
       permitidos: await acessos.permitidos(req.session.usuario.login),
+      menu: await acessos.menu(req.session.usuario.login),
     });
   } catch (e) { next(e); }
 });
