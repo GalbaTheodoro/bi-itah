@@ -10,10 +10,9 @@
     try {
       const p = new URLSearchParams();
       for (const [k, v] of Object.entries(estado.filtros)) if (v) p.set(k, v);
-      if (estado.chave) p.set('chave', estado.chave);
       if (atualizar) p.set('atualizar', '1');
       estado.dados = await api('/api/embarque?' + p.toString());
-      document.getElementById('em-atualizado').textContent = 'Dados de ' + new Date(estado.dados.atualizadoEm).toLocaleString('pt-BR');
+      document.getElementById('em-atualizado').textContent = 'Dados de ' + new Date(estado.dados.atualizadoEm).toLocaleString('pt-BR') + (estado.dados.msBanco ? ` · consulta ao banco: ${fmt.n(estado.dados.msBanco / 1000, 1)} s` : '');
       const sel = document.querySelector('#em-filtros [name=cliente]');
       if (sel.options.length === 1) sel.innerHTML += estado.dados.clientes.map((c) => `<option>${esc(c)}</option>`).join('');
       desenhar();
@@ -42,7 +41,8 @@
     const d = estado.dados, k = d.kpis, area = document.getElementById('em-area');
     const b = estado.busca.toLowerCase();
     const lista = d.embarques.filter((e) => !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos].join(' ').toLowerCase().includes(b));
-    const det = d.detalhe;
+    const resumo = d.embarques.find((e) => e.chave === estado.chave);
+    const det = resumo && d.detalhes[estado.chave] ? { ...resumo, ...d.detalhes[estado.chave] } : null;
     const pens = det ? det.peneiras.map((p) => p.peneira) : [];
     area.innerHTML = `
       <div class="kpis">
@@ -84,8 +84,8 @@
     if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); }
     const bx = document.getElementById('em-busca');
     bx.oninput = () => { estado.busca = bx.value; const pos = bx.selectionStart; desenhar(); const nb = document.getElementById('em-busca'); nb.focus(); nb.setSelectionRange(pos, pos); };
-    area.querySelectorAll('tr[data-chave]').forEach((tr) => tr.onclick = async () => {
-      estado.chave = tr.dataset.chave; await carregar();
+    area.querySelectorAll('tr[data-chave]').forEach((tr) => tr.onclick = () => {
+      estado.chave = tr.dataset.chave; desenhar(); // já está tudo na tela, não volta ao servidor
       if (window.innerWidth < 860) document.getElementById('em-g-pen')?.closest('.card').scrollIntoView({ behavior: 'smooth' });
     });
   }

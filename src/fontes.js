@@ -221,44 +221,58 @@ async function carregarRastreio({ db, forcar = false }) {
 module.exports.carregarRastreio = carregarRastreio;
 
 // ================= Embarque: amostra vendida x lotes embarcados =================
-// Guia de embarque/saída (TB_GSBX) -> contrato de venda (da linha ou da guia) -> amostra do contrato
-const CONTRATO_GUIA = `c.id = ISNULL(NULLIF(gs.IDContratoVenda, 0), g.IDContrato)`;
+// Primeiro acha os pares (guia, contrato) uma vez só; depois junta amostra e lotes (evita DISTINCT em linhas largas).
+const SQL_EMB_LINHAS = `
+SELECT gs.ID AS linha, gs.IDGSBX AS gsbx, gs.IDLote AS idLote, gs.Volume AS volume,
+       COALESCE(NULLIF(gs.IDContratoVenda, 0), g.IDContrato) AS idContrato, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data
+  FROM TB_GSBX_SAIDA gs
+ INNER JOIN TB_GSBX g ON g.ID = gs.IDGSBX
+ WHERE g.dataExclusao IS NULL AND ISNULL(gs.Volume, 0) > 0`;
 const SQL_EMB_AMOSTRA = `
-SELECT DISTINCT g.ID AS gsbx, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data, c.Numero AS contrato,
-       LEFT(d.Nome, 40) AS cliente, a.Numero AS amostra, td.defeito AS defeito, p.classificacao AS peneira, bc.percentual
-  FROM TB_GSBX g
- INNER JOIN TB_GSBX_SAIDA gs            ON gs.IDGSBX = g.ID
- INNER JOIN tb_contrato_cv c            ON ${CONTRATO_GUIA}
-  LEFT JOIN tb_domicilio d              ON d.id = c.IDDomicilio
- INNER JOIN TB_CONTRATO_AMOSTRA ca      ON ca.IDContrato = c.id
+WITH lin AS (${SQL_EMB_LINHAS}),
+     pares AS (SELECT DISTINCT gsbx, idContrato FROM lin WHERE idContrato IS NOT NULL)
+SELECT pr.gsbx, pr.idContrato, a.Numero AS amostra, td.defeito AS defeito, p.classificacao AS peneira, bc.percentual
+  FROM pares pr
+ INNER JOIN TB_CONTRATO_AMOSTRA ca      ON ca.IDContrato = pr.idContrato
  INNER JOIN tb_amostra a                ON a.id = ca.IDAmostra
   LEFT JOIN tb_tipo_defeito td          ON td.id = a.idtipodefeito
   LEFT JOIN TB_BLEND_CLASSIFICACAO bc   ON bc.idamostra = a.id AND bc.percentual > 0
-  LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = bc.idpeneira
- WHERE g.dataExclusao IS NULL`;
+  LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = bc.idpeneira`;
 const SQL_EMB_LOTES = `
-SELECT g.ID AS gsbx, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data, c.Numero AS contrato, LEFT(d.Nome, 40) AS cliente,
-       gs.ID AS linha, l.Numero AS lote, gs.Volume AS volume, tp.Nome AS tipo, l.Defeito AS defeitoLote, tdl.defeito AS defeitoTipo,
+WITH lin AS (${SQL_EMB_LINHAS})
+SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, c.Numero AS contrato, LEFT(d.Nome, 40) AS cliente,
+       l.Numero AS lote, lin.volume, tp.Nome AS tipo, l.Defeito AS defeitoLote, tdl.defeito AS defeitoTipo,
        l.Umidade AS umidade, p.classificacao AS peneira, lc.percentual
-  FROM TB_GSBX_SAIDA gs
- INNER JOIN TB_GSBX g                   ON g.ID = gs.IDGSBX
-  LEFT JOIN tb_contrato_cv c            ON ${CONTRATO_GUIA}
+  FROM lin
+ INNER JOIN tb_lote l                   ON l.id = lin.idLote
+  LEFT JOIN tb_contrato_cv c            ON c.id = lin.idContrato
   LEFT JOIN tb_domicilio d              ON d.id = c.IDDomicilio
- INNER JOIN tb_lote l                   ON l.id = gs.IDLote
   LEFT JOIN TB_TIPO_PRODUTO tp          ON tp.id = l.IDTipo_Prod
   LEFT JOIN tb_tipo_defeito tdl         ON tdl.id = l.IDTIPODEFEITO
   LEFT JOIN tb_lote_classificacao lc    ON lc.idlote = l.id AND lc.percentual > 0
-  LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = lc.idpeneira
- WHERE g.dataExclusao IS NULL AND ISNULL(gs.Volume, 0) > 0`;
+  LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = lc.idpeneira`;
 
-const cacheE = { dados: null, quando: 0 };
+const cacheE = { dados: null, quando: 0, carregando: null };
 async function carregarEmbarque({ db, forcar = false }) {
   const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
   if (!forcar && cacheE.dados && Date.now() - cacheE.quando < ttl) return cacheE.dados;
-  const [amostras, lotes] = await Promise.all([db.query(SQL_EMB_AMOSTRA), db.query(SQL_EMB_LOTES)]);
-  cacheE.dados = { amostras, lotes, atualizadoEm: new Date().toISOString() };
-  cacheE.quando = Date.now();
-  return cacheE.dados;
+  if (cacheE.carregando) return cacheE.carregando; // vários pedidos ao mesmo tempo: uma consulta só
+  cacheE.carregando = (async () => {
+    const t0 = Date.now();
+    const [amostrasPorPar, lotes] = await Promise.all([db.query(SQL_EMB_AMOSTRA), db.query(SQL_EMB_LOTES)]);
+    // completa a amostra com guia/contrato/cliente vindos das linhas dos lotes
+    const info = new Map();
+    for (const r of lotes) if (r.idContrato != null) info.set(r.gsbx + '|' + r.idContrato, r);
+    const amostras = [];
+    for (const a of amostrasPorPar) {
+      const r = info.get(a.gsbx + '|' + a.idContrato);
+      if (r) amostras.push({ ...a, guia: r.guia, data: r.data, contrato: r.contrato, cliente: r.cliente });
+    }
+    cacheE.dados = { amostras, lotes, atualizadoEm: new Date().toISOString(), msBanco: Date.now() - t0 };
+    cacheE.quando = Date.now();
+    return cacheE.dados;
+  })();
+  try { return await cacheE.carregando; } finally { cacheE.carregando = null; }
 }
 module.exports.carregarEmbarque = carregarEmbarque;
 module.exports.SQL_EMB_AMOSTRA = SQL_EMB_AMOSTRA;

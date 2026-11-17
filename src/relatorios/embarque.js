@@ -105,27 +105,31 @@ function montar(d) {
   return lista;
 }
 
+const cacheMontar = new WeakMap();
+function montarCache(d) { if (!cacheMontar.has(d)) cacheMontar.set(d, montar(d)); return cacheMontar.get(d); }
+
+function detalheDe(e) {
+  const { penA, penL, grA, grL, lotes, sacasTipo, amostras } = e._det;
+  const pens = ordenarPeneiras([...Object.keys(penA), ...Object.keys(penL)]);
+  return {
+    amostrasDet: amostras.map((a) => ({ amostra: a.amostra, defeito: a.defeito, pct: Object.fromEntries(Object.entries(pct(a.pen)).map(([k, v]) => [k, r2(v)])) })),
+    peneiras: pens.map((p) => ({ peneira: p, amostra: r2(penA[p] || 0), lotes: r2(penL[p] || 0), diferenca: r2((penL[p] || 0) - (penA[p] || 0)) })),
+    grupos: ordemGrupos([...Object.keys(grA), ...Object.keys(grL)]).map((g) => ({ grupo: g, amostra: r2(grA[g] || 0), lotes: r2(grL[g] || 0), diferenca: r2((grL[g] || 0) - (grA[g] || 0)) })),
+    tiposDet: Object.entries(sacasTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => ({ tipo: t, grupos: t === '(sem tipo)' ? 'fora da conta' : gruposTipo(t).join(' + '), sacas: r2(v) })),
+    lotes: lotes.map((l) => ({ lote: l.lote, sacas: r2(l.sacas), tipo: l.tipo, defeito: l.defeito, umidade: l.umidade, pct: l.pct })),
+  };
+}
+
 function gerar(d, f) {
   const de = f.de || '0000-00-00', ate = f.ate || '9999-99-99';
-  let lista = montar(d).filter((e) => (!e.data || (e.data >= de && e.data <= ate)) && (!f.cliente || e.cliente === f.cliente));
+  let lista = montarCache(d).filter((e) => (!e.data || (e.data >= de && e.data <= ate)) && (!f.cliente || e.cliente === f.cliente));
   lista.sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.guia.localeCompare(a.guia));
   const comAmostra = lista.filter((e) => e.aderenciaPeneira !== null || e.aderenciaTipo !== null || e.defeitoAmostra !== null);
   const pond = (k) => { let s = 0, v = 0; for (const e of lista) if (e[k] !== null) { s += e[k] * e.sacas; v += e.sacas; } return v ? r2(s / v) : null; };
 
-  let detalhe = null;
-  const e = lista.find((x) => x.chave === f.chave);
-  if (e) {
-    const { penA, penL, grA, grL, lotes, sacasTipo, amostras } = e._det;
-    const pens = ordenarPeneiras([...Object.keys(penA), ...Object.keys(penL)]);
-    detalhe = {
-      ...e, _det: undefined,
-      amostrasDet: amostras.map((a) => ({ amostra: a.amostra, defeito: a.defeito, pct: Object.fromEntries(Object.entries(pct(a.pen)).map(([k, v]) => [k, r2(v)])) })),
-      peneiras: pens.map((p) => ({ peneira: p, amostra: r2(penA[p] || 0), lotes: r2(penL[p] || 0), diferenca: r2((penL[p] || 0) - (penA[p] || 0)) })),
-      grupos: ordemGrupos([...Object.keys(grA), ...Object.keys(grL)]).map((g) => ({ grupo: g, amostra: r2(grA[g] || 0), lotes: r2(grL[g] || 0), diferenca: r2((grL[g] || 0) - (grA[g] || 0)) })),
-      tiposDet: Object.entries(sacasTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => ({ tipo: t, grupos: t === '(sem tipo)' ? 'fora da conta' : gruposTipo(t).join(' + '), sacas: r2(v) })),
-      lotes: lotes.map((l) => ({ lote: l.lote, sacas: r2(l.sacas), tipo: l.tipo, defeito: l.defeito, umidade: l.umidade, pct: l.pct })),
-    };
-  }
+  // todos os detalhes vão juntos: na tela, abrir um embarque não precisa voltar ao servidor
+  const detalhes = {};
+  for (const e of lista) detalhes[e.chave] = detalheDe(e);
   return {
     kpis: {
       embarques: lista.length, comAmostra: comAmostra.length, sacas: r2(lista.reduce((s, x) => s + x.sacas, 0)),
@@ -134,8 +138,8 @@ function gerar(d, f) {
       acimaDefeito: lista.filter((x) => x.difDefeito > 0).length,
     },
     embarques: lista.map((x) => ({ ...x, _det: undefined })),
-    clientes: [...new Set(montar(d).map((x) => x.cliente).filter(Boolean))].sort(),
-    detalhe,
+    clientes: [...new Set(montarCache(d).map((x) => x.cliente).filter(Boolean))].sort(),
+    detalhes,
   };
 }
 
