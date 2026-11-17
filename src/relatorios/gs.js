@@ -106,7 +106,8 @@ function filtrar(dados, f) {
   const de = f.de || '0000-00-00', ate = f.ate || '9999-99-99';
   const ok = (r) => (!f.armazem || r.armazem === f.armazem) && (!r.datafinal ? !f.de && !f.ate : r.datafinal >= de && r.datafinal <= ate);
   // a GS entra se tem resultado (saída) no período
-  const saidas = dados.saidas.filter(ok);
+  let saidas = dados.saidas.filter(ok);
+  if (f.origem) saidas = saidas.filter((r) => f.origem.has(r.gs)); // só GS com café do contrato de compra escolhido
   const gsSet = new Set(saidas.map((r) => r.gs));
   const entradas = dados.entradas.filter((r) => gsSet.has(r.gs));
   return { entradas, saidas };
@@ -215,6 +216,7 @@ function resumoGuia(g) {
     cobertura: r2(g.cobertura), nLotesEntrada: g.lotesEntrada.length, nLotesSaida: g.lotesSaida.length,
     perdas: r2(g.resultado['Resíduo/Perdas'] || 0),
     aderencia: g.aderencia === null ? null : r2(g.aderencia),
+    pctContrato: g.pctContrato === undefined ? null : r2(g.pctContrato),
   };
 }
 
@@ -228,6 +230,7 @@ function opcoes(dados) {
 function gerar(dados, f) {
   const tipoDoLote = new Map(dados.saidas.map((r) => [r.lote, r.tipo]));
   const guias = montarGuias(filtrar(dados, f), tipoDoLote);
+  if (f.origem) for (const g of guias) g.pctContrato = f.origem.get(g.gs);
   const minCob = f.cobertura ?? 80;
   const comparaveis = guias.filter((g) => g.comparavel && g.cobertura >= minCob);
 

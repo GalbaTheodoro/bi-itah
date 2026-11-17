@@ -162,6 +162,17 @@ app.get('/api/gs/opcoes', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+const { criarOrigem, participacaoPorGS } = require('./src/relatorios/origem');
+const cacheOrigem = { obj: null, dados: null };
+async function origemGS(forcar) {
+  const dR = await fontes.carregarRastreio({ db, forcar });
+  if (cacheOrigem.dados !== dR) { cacheOrigem.obj = criarOrigem(dR); cacheOrigem.dados = dR; }
+  return cacheOrigem.obj;
+}
+app.get('/api/gs/contratos', async (req, res, next) => {
+  try { res.json(DEMO ? [] : (await origemGS(false)).contratos); } catch (e) { next(e); }
+});
+
 app.get('/api/gs', async (req, res, next) => {
   try {
     const dados = await fontes.carregarGS({ demo: DEMO, db, forcar: req.query.atualizar === '1' });
@@ -169,7 +180,15 @@ app.get('/api/gs', async (req, res, next) => {
     const cob = Number(req.query.cobertura);
     const f = { de: data(req.query.de), ate: data(req.query.ate), armazem: req.query.armazem || null, gs: req.query.gs || null,
       cobertura: Number.isFinite(cob) && req.query.cobertura !== '' ? Math.min(100, Math.max(0, cob)) : 80 };
-    res.json({ ...relGS.gerar(dados, f), atualizadoEm: dados.atualizadoEm });
+    // filtro pelo contrato de compra das GR de origem (rastreabilidade)
+    const contrato = String(req.query.contratoCompra || '').trim();
+    if (contrato) {
+      if (DEMO) return res.status(400).json({ erro: 'O filtro por contrato de compra precisa do banco.' });
+      const origem = await origemGS(req.query.atualizar === '1');
+      f.origem = participacaoPorGS(dados.entradas, origem, contrato);
+      f.contratoCompra = contrato;
+    }
+    res.json({ ...relGS.gerar(dados, f), filtros: { ...f, origem: undefined }, atualizadoEm: dados.atualizadoEm });
   } catch (e) { next(e); }
 });
 

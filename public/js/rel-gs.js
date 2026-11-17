@@ -5,7 +5,7 @@
 
   function qs() {
     const f = estado.filtros, p = new URLSearchParams();
-    for (const k of ['de', 'ate', 'armazem', 'cobertura']) if (f[k] !== undefined && f[k] !== '') p.set(k, f[k]);
+    for (const k of ['de', 'ate', 'armazem', 'cobertura', 'contratoCompra']) if (f[k] !== undefined && f[k] !== '') p.set(k, f[k]);
     if (estado.gs) p.set('gs', estado.gs);
     return p;
   }
@@ -16,7 +16,8 @@
     try {
       const p = qs(); if (atualizar) p.set('atualizar', '1');
       estado.dados = await api('/api/gs?' + p.toString());
-      document.getElementById('gs-atualizado').textContent = 'Dados de ' + new Date(estado.dados.atualizadoEm).toLocaleString('pt-BR');
+      document.getElementById('gs-atualizado').textContent = 'Dados de ' + new Date(estado.dados.atualizadoEm).toLocaleString('pt-BR')
+        + (estado.dados.filtros.contratoCompra ? ` · só guias com café do contrato de compra ${estado.dados.filtros.contratoCompra} (pela rastreabilidade das GR)` : '');
       desenhar();
     } catch (e) {
       area.innerHTML = `<div class="aviso">${esc(e.message)}</div>`;
@@ -123,10 +124,10 @@
     return `<div class="grade">
       <div class="card ${det ? '' : 'full'}"><h2>Guias de serviço</h2><p class="sub">${fmt.n(lista.length)} guias · toque para detalhar</p>
         <input class="busca" id="gs-busca" placeholder="Buscar GS ou armazém" value="${esc(estado.busca)}">
-        <div class="tabela lista-contratos"><table><thead><tr><th>GS</th><th>Data final</th><th class="esq">Armazém</th><th>Despejado</th><th>Resultado</th><th>Rend.</th><th>Classif.</th><th>Aderência</th></tr></thead>
+        <div class="tabela lista-contratos"><table><thead><tr><th>GS</th><th>Data final</th><th class="esq">Armazém</th><th>Despejado</th><th>Resultado</th><th>Rend.</th><th>Classif.</th>${d.filtros.contratoCompra ? '<th>% do contrato</th>' : ''}<th>Aderência</th></tr></thead>
         <tbody>${lista.map((g) => `<tr class="click ${g.gs === estado.gs ? 'sel' : ''}" data-gs="${esc(g.gs)}">
           <td>${esc(g.gs)}</td><td>${fmt.data(g.datafinal)}</td><td class="esq">${esc(g.armazem)}</td><td>${fmt.n(g.volumeDespejado, 1)}</td><td>${fmt.n(g.volumeResultado, 1)}</td>
-          <td>${g.rendimento === null ? '–' : fmt.pct(g.rendimento)}</td><td>${fmt.pct(g.cobertura, 0)}</td>
+          <td>${g.rendimento === null ? '–' : fmt.pct(g.rendimento)}</td><td>${fmt.pct(g.cobertura, 0)}</td>${d.filtros.contratoCompra ? `<td>${fmt.pct(g.pctContrato, 1)}</td>` : ''}
           <td>${g.aderencia === null ? '<span class="pill">sem classif.</span>' : aderenciaPill(g.aderencia)}</td></tr>`).join('')}</tbody></table></div></div>
       ${det ? detalheGuia(det) : ''}
     </div>`;
@@ -206,6 +207,7 @@
         <label>Finalizada de<input type="date" name="de"></label>
         <label>Até<input type="date" name="ate"></label>
         <label>Armazém<select name="armazem"><option value="">Todos</option></select></label>
+        <label>Contrato de compra (GR de origem)<input name="contratoCompra" list="gs-contratos" placeholder="ex.: CIT00000694" autocomplete="off"><datalist id="gs-contratos"></datalist></label>
         <label>Classificação mínima do despejado<select name="cobertura">
           <option value="100">100% classificado</option><option value="80">80% ou mais</option><option value="50">50% ou mais</option><option value="0">Qualquer</option></select></label>
         <div style="display:flex;gap:6px"><button class="btn" type="submit">Aplicar</button><button class="btn sec" type="button" id="gs-atualizar" title="Buscar dados novos no banco">↻</button></div>
@@ -220,11 +222,13 @@
     try {
       const op = await api('/api/gs/opcoes');
       form.armazem.innerHTML += op.armazens.map((a) => `<option>${esc(a)}</option>`).join('');
+      api('/api/gs/contratos').then((cs) => { document.getElementById('gs-contratos').innerHTML = cs.map((c) => `<option value="${esc(c.contrato)}">${esc(c.fornecedor)}</option>`).join(''); }).catch(() => {});
     } catch (e) { document.getElementById('gs-area').innerHTML = `<div class="aviso">${esc(e.message)}</div>`; return; }
     for (const [k, v] of Object.entries(estado.filtros)) if (form[k]) form[k].value = v || '';
     form.onsubmit = (ev) => {
       ev.preventDefault();
-      estado.filtros = { de: form.de.value, ate: form.ate.value, armazem: form.armazem.value, cobertura: form.cobertura.value };
+      estado.filtros = { de: form.de.value, ate: form.ate.value, armazem: form.armazem.value, cobertura: form.cobertura.value, contratoCompra: form.contratoCompra.value.trim() };
+      estado.gs = null;
       carregar();
     };
     document.getElementById('gs-atualizar').onclick = () => carregar(true);
