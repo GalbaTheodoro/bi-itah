@@ -224,7 +224,8 @@ module.exports.carregarRastreio = carregarRastreio;
 // Primeiro acha os pares (guia, contrato) uma vez só; depois junta amostra e lotes (evita DISTINCT em linhas largas).
 const SQL_EMB_LINHAS = `
 SELECT gs.ID AS linha, gs.IDGSBX AS gsbx, gs.IDLote AS idLote, gs.Volume AS volume,
-       COALESCE(NULLIF(gs.IDContratoVenda, 0), g.IDContrato) AS idContrato, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data
+       COALESCE(NULLIF(gs.IDContratoVenda, 0), g.IDContrato) AS idContrato, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data,
+       g.IDDestinoDom AS idDestino, NULLIF(LTRIM(RTRIM(g.Destino)), '') AS destinoTexto
   FROM TB_GSBX_SAIDA gs
  INNER JOIN TB_GSBX g ON g.ID = gs.IDGSBX
  WHERE g.dataExclusao IS NULL AND ISNULL(gs.Volume, 0) > 0`;
@@ -240,13 +241,16 @@ SELECT pr.gsbx, pr.idContrato, a.Numero AS amostra, td.defeito AS defeito, p.cla
   LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = bc.idpeneira`;
 const SQL_EMB_LOTES = `
 WITH lin AS (${SQL_EMB_LINHAS})
-SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, c.Numero AS contrato, LEFT(d.Nome, 40) AS cliente,
+-- cliente = comprador do contrato de venda; se vazio, o destino da guia de saída
+SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, c.Numero AS contrato,
+       LEFT(COALESCE(NULLIF(LTRIM(RTRIM(dc.Nome)), ''), NULLIF(LTRIM(RTRIM(dd.Nome)), ''), lin.destinoTexto), 40) AS cliente,
        l.Numero AS lote, lin.volume, tp.Nome AS tipo, l.Defeito AS defeitoLote, tdl.defeito AS defeitoTipo,
        l.Umidade AS umidade, p.classificacao AS peneira, lc.percentual
   FROM lin
  INNER JOIN tb_lote l                   ON l.id = lin.idLote
   LEFT JOIN tb_contrato_cv c            ON c.id = lin.idContrato
-  LEFT JOIN tb_domicilio d              ON d.id = c.IDDomicilio
+  LEFT JOIN tb_domicilio dc             ON dc.id = c.idComprador
+  LEFT JOIN tb_domicilio dd             ON dd.id = lin.idDestino
   LEFT JOIN TB_TIPO_PRODUTO tp          ON tp.id = l.IDTipo_Prod
   LEFT JOIN tb_tipo_defeito tdl         ON tdl.id = l.IDTIPODEFEITO
   LEFT JOIN tb_lote_classificacao lc    ON lc.idlote = l.id AND lc.percentual > 0

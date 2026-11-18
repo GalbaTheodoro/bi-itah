@@ -229,7 +229,7 @@ app.get('/api/embarque', async (req, res, next) => {
     if (DEMO) return res.status(400).json({ erro: 'Este relatório precisa do banco (use o iniciar.bat).' });
     const d = await fontes.carregarEmbarque({ db, forcar: req.query.atualizar === '1' });
     const data = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
-    res.json({ ...relEmb.gerar(d, { de: data(req.query.de), ate: data(req.query.ate), cliente: req.query.cliente || null }), atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
+    res.json({ ...relEmb.gerar(d, { de: data(req.query.de), ate: data(req.query.ate), cliente: req.query.cliente || null, contrato: req.query.contrato || null }), atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
   } catch (e) { next(e); }
 });
 

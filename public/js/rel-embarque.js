@@ -15,6 +15,8 @@
       document.getElementById('em-atualizado').textContent = 'Dados de ' + new Date(estado.dados.atualizadoEm).toLocaleString('pt-BR') + (estado.dados.msBanco ? ` · consulta ao banco: ${fmt.n(estado.dados.msBanco / 1000, 1)} s` : '');
       const sel = document.querySelector('#em-filtros [name=cliente]');
       if (sel.options.length === 1) sel.innerHTML += estado.dados.clientes.map((c) => `<option>${esc(c)}</option>`).join('');
+      const dl = document.getElementById('em-contratos');
+      if (!dl.options.length) dl.innerHTML = (estado.dados.contratos || []).map((c) => `<option value="${esc(c)}">`).join('');
       desenhar();
     } catch (e) { area.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; } finally { area.classList.remove('carregando'); }
   }
@@ -79,7 +81,7 @@
             ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}</td><td class="esq">${esc(l.tipo)}</td><td>${fmt.n(l.sacas, 1)}</td><td class="${det.defeitoAmostra !== null && l.defeito > det.defeitoAmostra ? 'neg' : ''}">${n(l.defeito)}</td><td>${l.umidade ? fmt.pct(l.umidade) : '–'}</td>
               ${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : ''}
       </div>
-      <div class="legenda-calc">Amostra = amostra do contrato de venda ligado à guia de embarque (média se houver mais de uma). Lotes ponderados pelas sacas embarcadas.
+      <div class="legenda-calc">Amostra = amostra do contrato de venda ligado à guia de embarque (média se houver mais de uma). Cliente = comprador do contrato de venda (se vazio, o destino da guia de saída). Lotes ponderados pelas sacas embarcadas.
       Defeito do lote = campo Defeito do lote (ou o tipo de defeito, se vazio). Tipos de produto ligados aos grupos de config/mapeamento-gs.json.</div>`;
     if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); }
     const bx = document.getElementById('em-busca');
@@ -97,12 +99,13 @@
       <form class="filtros" id="em-filtros">
         <label>Embarque de<input type="date" name="de"></label>
         <label>Até<input type="date" name="ate"></label>
+        <label>Contrato<input name="contrato" list="em-contratos" placeholder="Todos" autocomplete="off"><datalist id="em-contratos"></datalist></label>
         <label>Cliente<select name="cliente"><option value="">Todos</option></select></label>
         <div style="display:flex;gap:6px"><button class="btn" type="submit">Aplicar</button><button class="btn sec" type="button" id="em-atualizar" title="Buscar dados novos no banco">↻</button></div>
       </form>
       <div id="em-area"></div>`;
     const form = document.getElementById('em-filtros');
-    form.onsubmit = (ev) => { ev.preventDefault(); estado.filtros = { de: form.de.value, ate: form.ate.value, cliente: form.cliente.value }; estado.chave = null; carregar(); };
+    form.onsubmit = (ev) => { ev.preventDefault(); estado.filtros = { de: form.de.value, ate: form.ate.value, contrato: form.contrato.value.trim(), cliente: form.cliente.value }; estado.chave = null; carregar(); };
     document.getElementById('em-atualizar').onclick = () => carregar(true);
     await carregar();
   }

@@ -122,7 +122,7 @@ function detalheDe(e) {
 
 function gerar(d, f) {
   const de = f.de || '0000-00-00', ate = f.ate || '9999-99-99';
-  let lista = montarCache(d).filter((e) => (!e.data || (e.data >= de && e.data <= ate)) && (!f.cliente || e.cliente === f.cliente));
+  let lista = montarCache(d).filter((e) => (!e.data || (e.data >= de && e.data <= ate)) && (!f.cliente || e.cliente === f.cliente) && (!f.contrato || e.contrato.toLowerCase().includes(String(f.contrato).toLowerCase())));
   lista.sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.guia.localeCompare(a.guia));
   const comAmostra = lista.filter((e) => e.aderenciaPeneira !== null || e.aderenciaTipo !== null || e.defeitoAmostra !== null);
   const pond = (k) => { let s = 0, v = 0; for (const e of lista) if (e[k] !== null) { s += e[k] * e.sacas; v += e.sacas; } return v ? r2(s / v) : null; };
@@ -139,6 +139,7 @@ function gerar(d, f) {
     },
     embarques: lista.map((x) => ({ ...x, _det: undefined })),
     clientes: [...new Set(montarCache(d).map((x) => x.cliente).filter(Boolean))].sort(),
+    contratos: [...new Set(montarCache(d).map((x) => x.contrato).filter(Boolean))].sort((a, b) => b.localeCompare(a, 'pt-BR', { numeric: true })),
     detalhes,
   };
 }
