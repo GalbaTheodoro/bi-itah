@@ -228,3 +228,9 @@ tbody tr.sel { background: #e3eefc; }
   tr { break-inside: avoid; }
   tbody tr.sel { background: #e3eefc !important; }
 }
+
+/* linha consolidada (todas as guias do contrato) */
+tbody tr.consol { background: #fff6e3; }
+tbody tr.consol td { border-bottom-color: #f0dcae; }
+tbody tr.consol.sel { background: #fde9bf; }
+tbody tr.consol:hover { background: #fdeccb; }

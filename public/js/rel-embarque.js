@@ -17,6 +17,7 @@
       if (sel.options.length === 1) sel.innerHTML += estado.dados.clientes.map((c) => `<option>${esc(c)}</option>`).join('');
       const dl = document.getElementById('em-contratos');
       if (!dl.options.length) dl.innerHTML = (estado.dados.contratos || []).map((c) => `<option value="${esc(c)}">`).join('');
+      if (!estado.chave && estado.dados.consolidados && estado.dados.consolidados.length) estado.chave = estado.dados.consolidados[0];
       desenhar();
     } catch (e) { area.innerHTML = `<div class="aviso">${esc(e.message)}</div>`; } finally { area.classList.remove('carregando'); }
   }
@@ -34,6 +35,21 @@
     });
   }
 
+  function gGuias(id, guias) {
+    grafico(id, {
+      type: 'bar',
+      data: { labels: guias.map((g) => g.guia), datasets: [
+        { label: 'Aderência peneira', data: guias.map((g) => g.aderenciaPeneira), backgroundColor: cor('--amostra'), borderRadius: 4, maxBarThickness: 34 },
+        { label: 'Aderência tipo', data: guias.map((g) => g.aderenciaTipo), backgroundColor: cor('--entrada'), borderRadius: 4, maxBarThickness: 34 },
+      ] },
+      options: { interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt.pct(c.parsed.y)}` } } },
+        scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: cor('--line') } }, x: { grid: { display: false } } } },
+    });
+  }
+
+  const periodo = (e) => (e.consolidado ? (e.dataIni === e.dataFim ? fmt.data(e.dataIni) : `${fmt.data(e.dataIni)} a ${fmt.data(e.dataFim)}`) : fmt.data(e.data));
+
   function tabela(linhas, nome, chave) {
     return `<div class="tabela"><table><thead><tr><th>${nome}</th><th>Amostra</th><th>Lotes</th><th>Diferença</th></tr></thead>
       <tbody>${linhas.map((l) => `<tr><td>${esc(l[chave])}</td><td>${fmt.pct(l.amostra)}</td><td>${fmt.pct(l.lotes)}</td><td class="${difClasse(l.diferenca)}">${fmt.pp(l.diferenca)}</td></tr>`).join('')}</tbody></table></div>`;
@@ -42,7 +58,7 @@
   function desenhar() {
     const d = estado.dados, k = d.kpis, area = document.getElementById('em-area');
     const b = estado.busca.toLowerCase();
-    const lista = d.embarques.filter((e) => !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos].join(' ').toLowerCase().includes(b));
+    const lista = d.embarques.filter((e) => e.consolidado || !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos].join(' ').toLowerCase().includes(b));
     const resumo = d.embarques.find((e) => e.chave === estado.chave);
     const det = resumo && d.detalhes[estado.chave] ? { ...resumo, ...d.detalhes[estado.chave] } : null;
     const pens = det ? det.peneiras.map((p) => p.peneira) : [];
@@ -57,12 +73,12 @@
         <div class="card ${det ? '' : 'full'}"><h2>Embarques</h2><p class="sub">Guia de embarque + contrato de venda · toque para detalhar</p>
           <input class="busca" id="em-busca" placeholder="Buscar guia, contrato, cliente, amostra ou tipo" value="${esc(estado.busca)}">
           <div class="tabela lista-contratos"><table><thead><tr><th>Guia</th><th>Data</th><th>Contrato</th><th class="esq">Cliente</th><th class="esq">Amostra</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Defeito am.</th><th>Defeito lotes</th></tr></thead>
-          <tbody>${lista.map((e) => `<tr class="click ${e.chave === estado.chave ? 'sel' : ''}" data-chave="${esc(e.chave)}"><td>${esc(e.guia)}</td><td>${fmt.data(e.data)}</td><td>${esc(e.contrato)}</td>
+          <tbody>${lista.map((e) => `<tr class="click ${e.consolidado ? 'consol' : ''} ${e.chave === estado.chave ? 'sel' : ''}" data-chave="${esc(e.chave)}"><td>${e.consolidado ? '<b>Σ Todas</b> (' + esc(e.guia) + ')' : esc(e.guia)}</td><td>${periodo(e)}</td><td>${esc(e.contrato)}</td>
             <td class="esq">${esc(e.cliente)}</td><td class="esq">${esc(e.amostras || 'sem amostra')}</td><td>${fmt.n(e.sacas, 1)}</td>
             <td>${aderenciaPill(e.aderenciaPeneira)}</td><td>${aderenciaPill(e.aderenciaTipo)}</td><td>${n(e.defeitoAmostra)}</td>
             <td class="${e.difDefeito > 0 ? 'neg' : e.difDefeito < 0 ? 'pos' : ''}">${n(e.defeitoLotes)}</td></tr>`).join('')}</tbody></table></div></div>
         ${det ? `
-        <div class="card"><h2>${esc(det.guia)} · ${esc(det.contrato)}</h2><p class="sub">${esc(det.cliente)} · ${fmt.data(det.data)} · amostra ${esc(det.amostras || '–')}</p>
+        <div class="card"><h2>${det.consolidado ? `Contrato ${esc(det.contrato)} · todas as ${esc(det.guia)}` : `${esc(det.guia)} · ${esc(det.contrato)}`}</h2><p class="sub">${esc(det.cliente)} · ${periodo(det)} · amostra ${esc(det.amostras || '–')}</p>
           <div class="kpis mini">
             <div class="kpi"><div class="t">Sacas</div><div class="v">${fmt.n(det.sacas, 1)}</div><div class="d">${det.nLotes} lotes</div></div>
             <div class="kpi"><div class="t">Defeito amostra</div><div class="v">${n(det.defeitoAmostra)}</div></div>
@@ -75,15 +91,25 @@
         <div class="card"><h2>Por grupo</h2>${tabela(det.grupos, 'Grupo', 'grupo')}
           <div class="tabela" style="margin-top:10px"><table><thead><tr><th>Tipo de produto</th><th class="esq">Grupo(s)</th><th>Sacas</th></tr></thead>
           <tbody>${det.tiposDet.map((t) => `<tr><td>${esc(t.tipo)}</td><td class="esq">${esc(t.grupos)}</td><td>${fmt.n(t.sacas, 1)}</td></tr>`).join('')}</tbody></table></div></div>
+        ${det.porGuia ? `
+        <div class="card full"><h2>Comparação entre as guias do contrato</h2><p class="sub">Cada guia contra a mesma amostra · toque numa guia para abrir</p>
+          <div class="grafico"><canvas id="em-g-guias"></canvas></div>
+          <div class="tabela" style="margin-top:10px"><table><thead><tr><th>Guia</th><th>Data</th><th>Lotes</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Defeito lotes</th><th>Dif. defeito</th><th>Umidade</th></tr></thead>
+          <tbody>${det.porGuia.map((g) => `<tr class="click" data-chave="${esc(g.chave)}"><td>${esc(g.guia)}</td><td>${fmt.data(g.data)}</td><td>${g.nLotes}</td><td>${fmt.n(g.sacas, 1)}</td>
+            <td>${aderenciaPill(g.aderenciaPeneira)}</td><td>${aderenciaPill(g.aderenciaTipo)}</td><td>${n(g.defeitoLotes)}</td>
+            <td class="${g.difDefeito > 0 ? 'neg' : g.difDefeito < 0 ? 'pos' : ''}">${g.difDefeito === null ? '–' : (g.difDefeito > 0 ? '+' : '') + fmt.n(g.difDefeito, 1)}</td><td>${g.umidadeLotes ? fmt.pct(g.umidadeLotes) : '–'}</td></tr>`).join('')}
+          <tr class="consol"><td><b>Σ Todas</b></td><td>${periodo(det)}</td><td>${det.nLotes}</td><td>${fmt.n(det.sacas, 1)}</td><td>${aderenciaPill(det.aderenciaPeneira)}</td><td>${aderenciaPill(det.aderenciaTipo)}</td><td>${n(det.defeitoLotes)}</td>
+            <td class="${det.difDefeito > 0 ? 'neg' : det.difDefeito < 0 ? 'pos' : ''}">${det.difDefeito === null ? '–' : (det.difDefeito > 0 ? '+' : '') + fmt.n(det.difDefeito, 1)}</td><td>${det.umidadeLotes ? fmt.pct(det.umidadeLotes) : '–'}</td></tr></tbody></table></div></div>` : ''}
         <div class="card full"><h2>Lotes embarcados</h2>
-          <div class="tabela"><table><thead><tr><th>Lote</th><th class="esq">Tipo</th><th>Sacas</th><th>Defeito</th><th>Umidade</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
-          <tbody>${det.amostrasDet.map((a) => `<tr style="background:#eef4fd"><td><b>Amostra ${esc(a.amostra)}</b></td><td></td><td></td><td><b>${n(a.defeito)}</b></td><td></td>${pens.map((p) => `<td><b>${a.pct[p] ? fmt.pct(a.pct[p]) : '–'}</b></td>`).join('')}</tr>`).join('')}
-            ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}</td><td class="esq">${esc(l.tipo)}</td><td>${fmt.n(l.sacas, 1)}</td><td class="${det.defeitoAmostra !== null && l.defeito > det.defeitoAmostra ? 'neg' : ''}">${n(l.defeito)}</td><td>${l.umidade ? fmt.pct(l.umidade) : '–'}</td>
+          <div class="tabela"><table><thead><tr><th>Lote</th>${det.porGuia ? '<th>Guia</th>' : ''}<th class="esq">Tipo</th><th>Sacas</th><th>Defeito</th><th>Umidade</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
+          <tbody>${det.amostrasDet.map((a) => `<tr style="background:#eef4fd"><td><b>Amostra ${esc(a.amostra)}</b></td>${det.porGuia ? '<td></td>' : ''}<td></td><td></td><td><b>${n(a.defeito)}</b></td><td></td>${pens.map((p) => `<td><b>${a.pct[p] ? fmt.pct(a.pct[p]) : '–'}</b></td>`).join('')}</tr>`).join('')}
+            ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}</td>${det.porGuia ? `<td>${esc(l.guia)}</td>` : ''}<td class="esq">${esc(l.tipo)}</td><td>${fmt.n(l.sacas, 1)}</td><td class="${det.defeitoAmostra !== null && l.defeito > det.defeitoAmostra ? 'neg' : ''}">${n(l.defeito)}</td><td>${l.umidade ? fmt.pct(l.umidade) : '–'}</td>
               ${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : ''}
       </div>
-      <div class="legenda-calc">Amostra = amostra do contrato de venda ligado à guia de embarque (média se houver mais de uma). Cliente = comprador do contrato de venda (se vazio, o destino da guia de saída). Lotes ponderados pelas sacas embarcadas.
+      <div class="legenda-calc">Amostra = amostra do contrato de venda ligado à guia de embarque (média se houver mais de uma). Cliente = comprador do contrato de venda (se vazio, o destino da guia de saída).
+      Ao filtrar um contrato com várias guias, a linha "Σ Todas" junta todos os lotes embarcados no contrato contra a amostra. Lotes ponderados pelas sacas embarcadas.
       Defeito do lote = campo Defeito do lote (ou o tipo de defeito, se vazio). Tipos de produto ligados aos grupos de config/mapeamento-gs.json.</div>`;
-    if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); }
+    if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); if (det.porGuia) gGuias('em-g-guias', det.porGuia); }
     const bx = document.getElementById('em-busca');
     bx.oninput = () => { estado.busca = bx.value; const pos = bx.selectionStart; desenhar(); const nb = document.getElementById('em-busca'); nb.focus(); nb.setSelectionRange(pos, pos); };
     area.querySelectorAll('tr[data-chave]').forEach((tr) => tr.onclick = () => {
