@@ -148,5 +148,7 @@ window.BI = (() => {
     abrir(location.hash.slice(1));
   }
 
-  return { registrar, iniciar, api, fmt, esc, grafico, cor, aderenciaPill, difClasse };
+  const graficosAtivos = () => [...graficos.entries()];
+
+  return { registrar, iniciar, graficosAtivos, api, fmt, esc, grafico, cor, aderenciaPill, difClasse };
 })();

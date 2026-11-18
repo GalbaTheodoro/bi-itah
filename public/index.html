@@ -32,12 +32,17 @@
     <header class="topo">
       <button class="hamb" id="hamb" type="button" aria-label="Abrir menu">☰</button>
       <div class="topo-titulo"><span id="titulo-grupo"></span><strong id="titulo-pagina"></strong></div>
+      <div class="topo-acoes">
+        <button class="btn sec" id="btn-pdf" type="button" title="Imprimir ou salvar em PDF">🖨️ <span>PDF</span></button>
+        <button class="btn sec" id="btn-excel" type="button" title="Baixar em Excel (.xlsx)">📊 <span>Excel</span></button>
+      </div>
     </header>
     <main id="conteudo"></main>
   </div>
 
   <script src="/vendor/chart.js"></script>
   <script src="/js/app.js"></script>
+  <script src="/js/exportar.js"></script>
   <!-- Cada relatório é um arquivo. Para criar um novo, copie rel-comparativo.js e registre com BI.registrar(...) -->
   <script src="/js/rel-comparativo.js"></script>
   <script src="/js/rel-gs.js"></script>

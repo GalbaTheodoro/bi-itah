@@ -189,3 +189,42 @@ tbody tr.sel { background: #e3eefc; }
   body.menu-aberto .fundo-menu { opacity: 1; pointer-events: auto; }
   body.menu-aberto { overflow: hidden; }
 }
+
+/* ---------- Exportar (PDF / Excel) ---------- */
+.topo-acoes { display: flex; gap: 6px; flex: none; }
+.topo-acoes .btn { padding: 7px 11px; font-size: 13px; display: flex; align-items: center; gap: 5px; }
+.topo-acoes .btn:disabled { opacity: .6; cursor: wait; }
+.print-img, .print-cab { display: none; }
+@media (max-width: 520px) { .topo-acoes .btn span { display: none; } }
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  html, body { background: #fff !important; }
+  body { font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .lateral, .fundo-menu, .topo, .filtros, .busca, .abas, #conteudo > .sub, .btn, .btn-instalar, .aviso { display: none !important; }
+  .corpo, body.menu-recolhido .corpo { margin: 0 !important; }
+  main { max-width: none; padding: 0; }
+  .print-cab { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; border-bottom: 2px solid var(--brand); padding-bottom: 6px; margin-bottom: 8px; }
+  .pc-logo { display: flex; align-items: center; gap: 8px; }
+  .pc-logo img { width: 30px; height: 30px; border-radius: 7px; }
+  .pc-logo b { display: block; font-size: 13px; color: var(--brand-escuro); }
+  .pc-logo span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .pc-info { text-align: right; font-size: 10px; color: var(--muted); }
+  .pc-filtros { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 10px; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  .card, .kpi { box-shadow: none !important; border: 1px solid var(--line); break-inside: avoid; }
+  .card.full, .card:has(table) { break-inside: auto; }
+  .kpis { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .kpi .v { font-size: 16px; }
+  .grade { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grafico, .grafico.alto { height: auto !important; }
+  .grafico canvas { display: none !important; }
+  .print-img { display: block; width: 100%; height: auto; max-height: 85mm; object-fit: contain; }
+  .tabela, .lista-contratos { overflow: visible !important; max-height: none !important; }
+  table { font-size: 9.5px; }
+  th, td { padding: 3px 5px; white-space: normal; }
+  th { position: static; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  tbody tr.sel { background: #e3eefc !important; }
+}
