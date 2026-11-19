@@ -12,6 +12,7 @@ const relGS = require('./src/relatorios/gs');
 const relCV = require('./src/relatorios/compravenda');
 const relLucro = require('./src/relatorios/lucro');
 const relEmb = require('./src/relatorios/embarque');
+const empresa = require('./src/empresa');
 
 const DEMO = process.argv.includes('--demo') || process.env.DEMO === '1';
 // No modo demonstração o usuário demo é administrador
@@ -230,6 +231,20 @@ app.get('/api/embarque', async (req, res, next) => {
     const d = await fontes.carregarEmbarque({ db, forcar: req.query.atualizar === '1' });
     const data = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
     res.json({ ...relEmb.gerar(d, { de: data(req.query.de), ate: data(req.query.ate), cliente: req.query.cliente || null, contrato: req.query.contrato || null }), atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
+  } catch (e) { next(e); }
+});
+
+// ----- Dados da empresa (cabeçalho do PDF): ?ids=1,2 -> empresas do relatório; sem ids -> empresa padrão
+app.get('/api/empresa', async (req, res, next) => {
+  try {
+    if (DEMO) return res.json({ empresas: empresa.demo() });
+    if (req.query.colunas === '1') {
+      if (!acessos.ehAdmin(req.session.usuario.login)) return res.status(403).json({ erro: 'Só administradores.' });
+      return res.json(await empresa.diagnostico(db));
+    }
+    const ids = String(req.query.ids || '').split(',').filter(Boolean);
+    res.set('Cache-Control', 'private, max-age=600');
+    res.json({ empresas: await empresa.buscar(db, ids) });
   } catch (e) { next(e); }
 });
 

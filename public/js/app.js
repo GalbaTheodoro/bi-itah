@@ -18,6 +18,8 @@ window.BI = (() => {
     if (r.status === 401) { location.href = '/login.html'; throw new Error('Sessão expirada'); }
     const j = await r.json();
     if (!r.ok) throw new Error(j.erro || 'Erro');
+    // empresas (IDEmpresa) dos dados do relatório -> cabeçalho do PDF
+    if (j && Array.isArray(j.empresas)) window.dispatchEvent(new CustomEvent('bi:empresas', { detail: j.empresas }));
     return j;
   }
 
@@ -119,6 +121,7 @@ window.BI = (() => {
     document.title = r.titulo + ' · BI Itah';
     desenharMenu();
     graficos.forEach((g) => g.destroy()); graficos.clear();
+    window.dispatchEvent(new CustomEvent('bi:empresas', { detail: null })); // relatório novo: volta à empresa padrão
     main.innerHTML = '';
     r.render(main);
   }

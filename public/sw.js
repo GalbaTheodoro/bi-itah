@@ -1,6 +1,6 @@
 // Service worker do BI Itah: permite instalar como app e abre a tela mais rápido.
 // Os DADOS (/api) nunca ficam em cache: sempre vêm do servidor.
-const VERSAO = 'bi-itah-v3';
+const VERSAO = 'bi-itah-v4';
 const ARQUIVOS = ['/css/app.css', '/img/logo.png', '/img/icon-192.png', '/vendor/chart.js', '/js/login.js', '/login.html'];
 
 self.addEventListener('install', (e) => {

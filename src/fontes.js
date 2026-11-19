@@ -4,7 +4,7 @@ const fs = require('fs');
 
 // Classificação das amostras vinculadas aos contratos de COMPRA (tipo = 0)
 const SQL_AMOSTRAS = `
-SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 40) AS fornecedor,
+SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 40) AS fornecedor, c.IDEmpresa AS idEmpresa,
        a.numero AS amostra, a.data AS dataAmostra, p.classificacao AS peneira, bc.percentual
   FROM tb_contrato_cv c
  INNER JOIN tb_domicilio d            ON d.id = c.iddomicilio
@@ -16,7 +16,7 @@ SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 
 
 // Classificação dos lotes que entraram por contrato de compra
 const SQL_ENTRADAS = `
-SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 40) AS fornecedor,
+SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 40) AS fornecedor, c.IDEmpresa AS idEmpresa,
        l.numero AS lote, l.data AS dataEntrada, l.VolumeInicial AS volume, arma.nome AS armazem,
        p.classificacao AS peneira, lc.percentual
   FROM tb_lote l
@@ -129,7 +129,7 @@ async function carregarGS({ demo, db, forcar = false }) {
 // Contratos de VENDA (tudo que não é compra: tipo <> 0) com a classificação da amostra
 const SQL_VENDAS_AMOSTRA = `
 SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quantidade, c.data AS dataContrato,
-       LEFT(d.nome, 40) AS cliente, a.numero AS amostra, p.classificacao AS peneira, bc.percentual
+       LEFT(d.nome, 40) AS cliente, c.IDEmpresa AS idEmpresa, a.numero AS amostra, p.classificacao AS peneira, bc.percentual
   FROM tb_contrato_cv c
  INNER JOIN tb_domicilio d            ON d.id = c.iddomicilio
  INNER JOIN TB_CONTRATO_AMOSTRA ca    ON ca.IDContrato = c.id
@@ -141,7 +141,7 @@ SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quan
 // Lotes vinculados (despejados) nos contratos de venda, com a classificação por peneira do lote
 const SQL_VENDAS_LOTES = `
 SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quantidade, c.data AS dataContrato,
-       LEFT(d.nome, 40) AS cliente, l.numero AS lote, l.VolumeInicial AS volume, tp.nome AS tipo,
+       LEFT(d.nome, 40) AS cliente, c.IDEmpresa AS idEmpresa, l.numero AS lote, l.VolumeInicial AS volume, tp.nome AS tipo,
        p.classificacao AS peneira, lc.percentual
   FROM tb_contrato_cv c
  INNER JOIN tb_domicilio d                ON d.id = c.iddomicilio
@@ -155,7 +155,7 @@ SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quan
 const cacheV = { dados: null, quando: 0 };
 function limparV(r) {
   return {
-    contrato: String(r.contrato).trim(), quantidade: Number(r.quantidade) || 0, dataContrato: dia(r.dataContrato),
+    contrato: String(r.contrato).trim(), quantidade: Number(r.quantidade) || 0, dataContrato: dia(r.dataContrato), idEmpresa: r.idEmpresa ?? null,
     cliente: r.cliente ? String(r.cliente).trim() : '(sem nome)', amostra: r.amostra ? String(r.amostra).trim() : undefined,
     lote: r.lote ? String(r.lote).trim() : undefined, tipo: r.tipo ? String(r.tipo).trim() : (r.lote ? '(sem tipo)' : undefined), volume: r.volume !== undefined ? Number(r.volume) || 0 : undefined,
     peneira: r.peneira ? String(r.peneira).trim() : null, percentual: r.percentual === null || r.percentual === undefined ? null : Number(r.percentual),
@@ -204,7 +204,7 @@ async function carregarRastreio({ db, forcar = false }) {
     // Lotes da GUIA DE SAÍDA (TB_GSBX) -> contrato de VENDA da linha (ou da guia)
     db.query(`SELECT gs.ID AS id, gs.IDLote AS lote, ISNULL(gs.Volume, 0) AS vol, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data,
                      c.Numero AS contrato, c.Tipo AS tipoContrato, ${PRECO_SACA} AS preco,
-                     LEFT(d.Nome, 40) AS cliente, tp.Nome AS tipo
+                     LEFT(d.Nome, 40) AS cliente, tp.Nome AS tipo, g.IDEmpresa AS idEmpresa
                 FROM TB_GSBX_SAIDA gs
                INNER JOIN TB_GSBX g ON g.id = gs.IDGSBX
                 LEFT JOIN tb_contrato_cv c ON c.id = ISNULL(NULLIF(gs.IDContratoVenda, 0), g.IDContrato)
@@ -225,7 +225,7 @@ module.exports.carregarRastreio = carregarRastreio;
 const SQL_EMB_LINHAS = `
 SELECT gs.ID AS linha, gs.IDGSBX AS gsbx, gs.IDLote AS idLote, gs.Volume AS volume,
        COALESCE(NULLIF(gs.IDContratoVenda, 0), g.IDContrato) AS idContrato, g.Numero AS guia, ISNULL(g.dataEmbarque, g.Data) AS data,
-       g.IDDestinoDom AS idDestino, NULLIF(LTRIM(RTRIM(g.Destino)), '') AS destinoTexto
+       g.IDDestinoDom AS idDestino, NULLIF(LTRIM(RTRIM(g.Destino)), '') AS destinoTexto, g.IDEmpresa AS idEmpresa
   FROM TB_GSBX_SAIDA gs
  INNER JOIN TB_GSBX g ON g.ID = gs.IDGSBX
  WHERE g.dataExclusao IS NULL AND ISNULL(gs.Volume, 0) > 0`;
@@ -242,7 +242,7 @@ SELECT pr.gsbx, pr.idContrato, a.Numero AS amostra, td.defeito AS defeito, p.cla
 const SQL_EMB_LOTES = `
 WITH lin AS (${SQL_EMB_LINHAS})
 -- cliente = comprador do contrato de venda; se vazio, o destino da guia de saída
-SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, c.Numero AS contrato,
+SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, lin.idEmpresa, c.Numero AS contrato,
        LEFT(COALESCE(NULLIF(LTRIM(RTRIM(dc.Nome)), ''), NULLIF(LTRIM(RTRIM(dd.Nome)), ''), lin.destinoTexto), 40) AS cliente,
        l.Numero AS lote, lin.volume, tp.Nome AS tipo, l.Defeito AS defeitoLote, tdl.defeito AS defeitoTipo,
        l.Umidade AS umidade, p.classificacao AS peneira, lc.percentual

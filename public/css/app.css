@@ -204,13 +204,21 @@ tbody tr.sel { background: #e3eefc; }
   .lateral, .fundo-menu, .topo, .filtros, .busca, .abas, #conteudo > .sub, .btn, .btn-instalar, .aviso { display: none !important; }
   .corpo, body.menu-recolhido .corpo { margin: 0 !important; }
   main { max-width: none; padding: 0; }
-  .print-cab { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; border-bottom: 2px solid var(--brand); padding-bottom: 6px; margin-bottom: 8px; }
-  .pc-logo { display: flex; align-items: center; gap: 8px; }
-  .pc-logo img { width: 30px; height: 30px; border-radius: 7px; }
-  .pc-logo b { display: block; font-size: 13px; color: var(--brand-escuro); }
-  .pc-logo span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-  .pc-info { text-align: right; font-size: 10px; color: var(--muted); }
-  .pc-filtros { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 10px; }
+  .print-cab { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; align-items: start; border-bottom: 2px solid var(--brand); padding-bottom: 8px; margin-bottom: 10px; break-inside: avoid; }
+  .pc-emp { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .pc-emp img { max-width: 130px; max-height: 60px; object-fit: contain; flex: none; }
+  .pc-emp b { display: block; font-size: 14px; color: var(--brand-escuro); }
+  .pc-emp small { display: block; font-size: 10.5px; color: var(--muted); margin-bottom: 2px; }
+  .pc-emp span { display: block; font-size: 9.5px; color: #333; line-height: 1.35; }
+  .pc-emp .pc-outras { color: var(--muted); font-style: italic; }
+  .pc-info { text-align: right; font-size: 9.5px; color: var(--muted); display: flex; flex-direction: column; gap: 1px; }
+  .pc-info b { font-size: 12px; color: var(--ink, #1a2433); }
+  .pc-filtros { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 9.5px;
+    background: #f3f7fd; border: 1px solid #d6e3f5; border-radius: 6px; padding: 5px 8px; }
+  .pc-filtros > b { color: var(--brand-escuro); margin-right: 4px; text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+  .pc-filtros span { background: #fff; border: 1px solid #d6e3f5; border-radius: 10px; padding: 1px 8px; }
+  .pc-filtros em { font-style: normal; color: var(--muted); margin-right: 3px; }
+  .pc-filtros em::after { content: ":"; }
   h1 { font-size: 16px; margin: 0 0 8px; }
   .card, .kpi { box-shadow: none !important; border: 1px solid var(--line); break-inside: avoid; }
   .card.full, .card:has(table) { break-inside: auto; }

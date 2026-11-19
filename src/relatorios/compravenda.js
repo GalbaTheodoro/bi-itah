@@ -1,3 +1,4 @@
+const { idsEmpresa } = require('../empresa');
 // Relatório 3: O que foi COMPRADO × o que foi VENDIDO, por peneira.
 //
 // Duas bases (escolha na tela):
@@ -193,8 +194,12 @@ function gerar(compras, vendas, f) {
     sacas: Object.fromEntries(Object.entries(c.sacas).map(([p, v]) => [p, r2(v)])),
   })).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
 
+  const nComp = new Set(comp.map((c) => c.contrato)), nVend = new Set(vend.map((c) => c.contrato));
+  const empresas = idsEmpresa([...compras.amostras, ...compras.entradas].filter((r) => nComp.has(r.contrato)),
+    [...(vendas.amostras || []), ...(vendas.lotes || [])].filter((r) => nVend.has(r.contrato)));
   return {
     filtros: f,
+    empresas,
     kpis: {
       contratosCompra: comp.length, contratosVenda: vend.length,
       comprado: r2(totC), vendido: r2(totV), saldo: r2(totC - totV),

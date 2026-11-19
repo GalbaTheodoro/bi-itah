@@ -1,3 +1,4 @@
+const { idsEmpresa } = require('../empresa');
 // Relatório 5: AMOSTRA VENDIDA (contrato de venda ligado à guia de embarque) × LOTES EMBARCADOS na guia.
 //
 // Para cada guia + contrato de venda:
@@ -36,8 +37,10 @@ function agrupar(d) {
   const emb = new Map();
   const pegar = (r) => {
     const k = `${r.gsbx}|${txt(r.contrato)}`;
-    if (!emb.has(k)) emb.set(k, { chave: k, guia: txt(r.guia), data: dia(r.data), contrato: txt(r.contrato), cliente: txt(r.cliente), _am: new Map(), _lotes: new Map() });
-    return emb.get(k);
+    if (!emb.has(k)) emb.set(k, { chave: k, guia: txt(r.guia), data: dia(r.data), contrato: txt(r.contrato), cliente: txt(r.cliente), idEmpresa: null, _am: new Map(), _lotes: new Map() });
+    const e = emb.get(k);
+    if (!e.idEmpresa && Number(r.idEmpresa) > 0) e.idEmpresa = Number(r.idEmpresa);
+    return e;
   };
   for (const r of d.amostras) {
     const e = pegar(r);
@@ -92,7 +95,7 @@ function calcular(e, amostras, lotes, extra = {}) {
   const defL = volDef > 0 ? somaDef / volDef : null;
   const adP = aderencia(penA, penL), adT = aderencia(grA, grL);
   return {
-    chave: e.chave, guia: e.guia, data: e.data, contrato: e.contrato, cliente: e.cliente,
+    chave: e.chave, guia: e.guia, data: e.data, contrato: e.contrato, cliente: e.cliente, idEmpresa: e.idEmpresa || null,
     amostras: amostras.map((a) => a.amostra).join(', '), sacas: r2(sacas), nLotes: lotes.length,
     defeitoAmostra: defA === null ? null : r2(defA), defeitoLotes: defL === null ? null : r2(defL),
     difDefeito: defA !== null && defL !== null ? r2(defL - defA) : null,
@@ -121,7 +124,7 @@ function consolidar(guias) {
   const lotes = ord.flatMap((g) => g._det.lotes.map((l) => ({ ...l, pen: l.pen })));
   const datas = ord.map((g) => g.data).filter(Boolean);
   const c = calcular(
-    { chave: 'TODAS|' + ord[0].contrato, guia: `${ord.length} guias`, data: datas[datas.length - 1] || null, contrato: ord[0].contrato, cliente: ord[0].cliente },
+    { chave: 'TODAS|' + ord[0].contrato, guia: `${ord.length} guias`, data: datas[datas.length - 1] || null, contrato: ord[0].contrato, cliente: ord[0].cliente, idEmpresa: ord[0].idEmpresa },
     [...am.values()], lotes,
     { consolidado: true, dataIni: datas[0] || null, dataFim: datas[datas.length - 1] || null },
   );
@@ -173,6 +176,7 @@ function gerar(d, f) {
     },
     embarques: [...consolidados, ...lista].map((x) => ({ ...x, _det: undefined })),
     consolidados: consolidados.map((x) => x.chave),
+    empresas: idsEmpresa(lista),
     clientes: [...new Set(montarCache(d).map((x) => x.cliente).filter(Boolean))].sort(),
     contratos: [...new Set(montarCache(d).map((x) => x.contrato).filter(Boolean))].sort((a, b) => b.localeCompare(a, 'pt-BR', { numeric: true })),
     detalhes,

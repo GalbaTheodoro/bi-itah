@@ -11,8 +11,8 @@
     return `${base} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}h${p(d.getMinutes())}.${ext}`;
   };
 
-  // Filtros preenchidos na tela: [[rótulo, valor]]
-  function filtros() {
+  // Filtros da tela: [[rótulo, valor]] — com todos=true, campo vazio aparece como "Todos"
+  function filtros(todos = false) {
     const out = [];
     $$('#conteudo .filtros label').forEach((l) => {
       const campo = l.querySelector('input, select');
@@ -24,10 +24,42 @@
       else if (campo.type === 'date') v = campo.value ? campo.value.split('-').reverse().join('/') : '';
       else v = campo.value.trim();
       if (v) out.push([rot, v]);
+      else if (todos) out.push([rot, campo.type === 'checkbox' ? 'Não' : 'Todos']);
     });
+    $$('#conteudo input.busca').forEach((b) => { if (b.value.trim()) out.push(['Busca', b.value.trim()]); });
     const aba = $('#conteudo .abas button.ativo');
     if (aba) out.unshift(['Visão', aba.textContent.trim()]);
     return out;
+  }
+
+  // ---------------- Empresa (TB_EMPRESA) ----------------
+  // Os relatórios devolvem "empresas" (IDEmpresa dos dados filtrados); sem isso usa a empresa padrão.
+  let idsAtuais = null;
+  const cacheEmp = new Map(); // "1,2" -> { promessa, dados }
+  function carregarEmpresas() {
+    const k = (idsAtuais && idsAtuais.length ? idsAtuais : []).join(',');
+    if (!cacheEmp.has(k)) {
+      const item = { dados: null };
+      item.promessa = fetch('/api/empresa' + (k ? '?ids=' + k : ''), { headers: { Accept: 'application/json' } })
+        .then((r) => (r.ok ? r.json() : { empresas: [] })).then((j) => (item.dados = j.empresas || []))
+        .catch(() => { cacheEmp.delete(k); return (item.dados = []); });
+      cacheEmp.set(k, item);
+    }
+    return cacheEmp.get(k);
+  }
+  window.addEventListener('bi:empresas', (e) => { idsAtuais = e.detail; carregarEmpresas(); });
+  const empresasProntas = () => carregarEmpresas().dados;
+
+  function cabecalhoEmpresa(lista) {
+    const emp = (lista || [])[0];
+    if (!emp) return `<div class="pc-emp"><img src="/img/logo.png" alt=""><div><b>BI Itah</b></div></div>`;
+    const doc = [emp.cnpj && 'CNPJ ' + emp.cnpj, emp.ie && 'IE ' + emp.ie].filter(Boolean).join(' · ');
+    const cont = [emp.telefone, emp.email, emp.site].filter(Boolean).join(' · ');
+    const outras = lista.slice(1).map((x) => x.razao);
+    return `<div class="pc-emp">${emp.logo ? `<img src="${BI.esc(emp.logo)}" alt="">` : ''}
+      <div><b>${BI.esc(emp.razao)}</b>${emp.fantasia ? `<small>${BI.esc(emp.fantasia)}</small>` : ''}
+      ${doc ? `<span>${BI.esc(doc)}</span>` : ''}${emp.endereco ? `<span>${BI.esc(emp.endereco)}</span>` : ''}${cont ? `<span>${BI.esc(cont)}</span>` : ''}
+      ${outras.length ? `<span class="pc-outras">Também neste relatório: ${BI.esc(outras.join('; '))}</span>` : ''}</div></div>`;
   }
 
   // ---------------- PDF (imprimir) ----------------
@@ -43,12 +75,15 @@
         c.after(img);
       } catch (_) {}
     });
-    const f = filtros();
+    const f = filtros(true);
     const cab = document.createElement('div');
     cab.className = 'print-cab';
-    cab.innerHTML = `<div class="pc-logo"><img src="/img/logo.png" alt=""><div><b>BI Itah</b><span>${BI.esc($('#titulo-grupo')?.textContent || '')}</span></div></div>
-      <div class="pc-info">${BI.esc(agora())}<br>${BI.esc($('#usuario')?.textContent.replace('DEMO', '').trim() || '')}</div>
-      ${f.length ? `<div class="pc-filtros">${f.map(([k, v]) => `<span><b>${BI.esc(k)}:</b> ${BI.esc(v)}</span>`).join('')}</div>` : ''}`;
+    cab.innerHTML = `${cabecalhoEmpresa(empresasProntas())}
+      <div class="pc-info"><b>${BI.esc(titulo())}</b><span>${BI.esc($('#titulo-grupo')?.textContent || '')}</span>
+        <span>Emitido em ${BI.esc(agora())}</span><span>por ${BI.esc($('#usuario')?.textContent.replace('DEMO', '').trim() || '')}</span></div>
+      <div class="pc-filtros"><b>Filtros aplicados</b>${f.length
+        ? f.map(([k, v]) => `<span><em>${BI.esc(k)}</em> ${BI.esc(v)}</span>`).join('')
+        : '<span>Nenhum filtro (todos os dados)</span>'}</div>`;
     $('#conteudo').prepend(cab);
     tituloAntes = document.title;
     document.title = nomeArquivo('pdf').replace(/\.pdf$/, ''); // vira o nome sugerido do PDF
@@ -61,11 +96,18 @@
   }
   window.addEventListener('beforeprint', antesImprimir); // também no Ctrl+P
   window.addEventListener('afterprint', depoisImprimir);
-  function pdf() {
-    antesImprimir();
-    // espera as imagens dos gráficos carregarem antes de abrir a janela de impressão
-    Promise.all($$('#conteudo .print-img').map((i) => (i.complete ? 0 : new Promise((r) => { i.onload = i.onerror = r; }))))
-      .then(() => setTimeout(() => window.print(), 50));
+  async function pdf() {
+    const b = $('#btn-pdf'), txt = b?.innerHTML;
+    if (b) { b.disabled = true; b.textContent = 'Preparando…'; }
+    try {
+      // dados da empresa (no máximo 5 s esperando o servidor)
+      await Promise.race([carregarEmpresas().promessa, new Promise((r) => setTimeout(r, 5000))]);
+      antesImprimir();
+      // espera logo e imagens dos gráficos carregarem antes de abrir a janela de impressão
+      await Promise.all($$('#conteudo .print-img, #conteudo .print-cab img').map((i) => (i.complete ? 0 : new Promise((r) => { i.onload = i.onerror = r; }))));
+      await new Promise((r) => setTimeout(r, 50));
+    } finally { if (b) { b.disabled = false; b.innerHTML = txt; } }
+    window.print();
   }
 
   // ---------------- Excel ----------------
@@ -152,8 +194,11 @@
       const wb = X.utils.book_new();
       const usados = new Set();
       // 1) Resumo: título, filtros e indicadores (cards de KPI)
-      const resumo = [[titulo()], ['Gerado em', agora()], ['Usuário', $('#usuario')?.textContent.replace('DEMO', '').trim() || '']];
-      const f = filtros();
+      await Promise.race([carregarEmpresas().promessa, new Promise((r) => setTimeout(r, 3000))]);
+      const resumo = [[titulo()]];
+      (empresasProntas() || []).forEach((e) => resumo.push(['Empresa', e.razao + (e.cnpj ? ' · CNPJ ' + e.cnpj : '')]));
+      resumo.push(['Gerado em', agora()], ['Usuário', $('#usuario')?.textContent.replace('DEMO', '').trim() || '']);
+      const f = filtros(true);
       if (f.length) { resumo.push([], ['Filtros']); f.forEach((x) => resumo.push(x)); }
       const kpis = $$('#conteudo .kpi');
       if (kpis.length) {
@@ -198,6 +243,7 @@
     $('#conteudo').prepend(d); setTimeout(() => d.remove(), 6000);
   }
 
+  setTimeout(carregarEmpresas, 1500); // já deixa a empresa padrão pronta
   document.addEventListener('DOMContentLoaded', () => {
     $('#btn-pdf').onclick = pdf;
     $('#btn-excel').onclick = (e) => excel(e.currentTarget);

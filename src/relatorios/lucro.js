@@ -1,3 +1,4 @@
+const { idsEmpresa } = require('../empresa');
 // Relatório 4: Lucro por lote vendido, com o custo vindo dos lotes GR de origem.
 //
 // Rastreio (igual à procedure Node_RastreabilidadeLote do WMS, sentido VOLTA):
@@ -68,6 +69,7 @@ function gerar(d, f) {
   const ix = indexar(d);
   const de = f.de || '0000-00-00', ate = f.ate || '9999-99-99';
   const resultado = [];
+  const empresasVistas = new Set();
   for (const v of d.vendidos) {
     const data = dia(v.data);
     if (data && (data < de || data > ate)) continue;
@@ -75,6 +77,7 @@ function gerar(d, f) {
     if (f.cliente && cliente !== f.cliente) continue;
     const lx = ix.lote.get(v.lote);
     if (!lx) continue;
+    if (Number(v.idEmpresa) > 0) empresasVistas.add(Number(v.idEmpresa));
     const sacas = Number(v.vol) || 0;            // sacas que saíram na guia de saída
     const exporta = Number(v.tipoContrato) === 2; // contrato de exportação (IT): preço em US$
     const { origens, truncado } = rastrear(ix, v.lote);
@@ -140,6 +143,7 @@ function gerar(d, f) {
 
   return {
     dolar: f.dolar,
+    empresas: [...empresasVistas].sort((a, b) => a - b),
     kpis: {
       lotes: resultado.length, lotesCalculados: comLucro.length,
       sacas: r2(sacasCalc), receita: r2(soma('receita')), custo: r2(soma('custoTotal')), lucro: r2(soma('lucro')),

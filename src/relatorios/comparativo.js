@@ -1,3 +1,4 @@
+const { idsEmpresa } = require('../empresa');
 // Relatório 1: Classificação da AMOSTRA de compra x classificação dos LOTES que entraram.
 //
 // Regras de cálculo:
@@ -224,6 +225,7 @@ function gerar(dados, f) {
   const volContratado = baseAgregado.reduce((s, c) => s + c.quantidade, 0);
   return {
     filtros: f,
+    empresas: idsEmpresa(filtrados.amostras, filtrados.entradas),
     kpis: {
       contratos: contratos.length,
       contratosComparaveis: comparaveis.length,
