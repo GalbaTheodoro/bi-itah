@@ -1,7 +1,24 @@
 // Relatório: Amostra vendida (contrato da guia de embarque) × Lotes embarcados
 (() => {
   const { api, fmt, esc, grafico, cor, aderenciaPill, difClasse } = BI;
-  const estado = { filtros: {}, chave: null, busca: '', dados: null };
+  const estado = { filtros: {}, chave: null, busca: '', dados: null, detalhes: new Map(), limite: 200 };
+  const PAGINA = 200; // linhas da lista por vez (lista enorme deixa a tela lenta)
+  const chaveDet = (k) => k + '|' + JSON.stringify(estado.filtros);
+
+  // detalhe de um embarque: busca no servidor só quando abre e guarda para não buscar de novo
+  async function buscarDetalhe(chave) {
+    const ck = chaveDet(chave);
+    if (estado.detalhes.has(ck)) return;
+    estado.detalhes.set(ck, null); // marcando "carregando"
+    try {
+      const p = new URLSearchParams({ chave });
+      for (const [k, v] of Object.entries(estado.filtros)) if (v) p.set(k, v);
+      estado.detalhes.set(ck, await BI.api('/api/embarque/detalhe?' + p.toString()));
+    } catch (e) {
+      estado.detalhes.set(ck, { erro: e.message });
+    }
+    if (estado.chave === chave && document.getElementById('em-area')) desenhar();
+  }
   const n = (v, d = 1) => (v === null || v === undefined ? '–' : fmt.n(v, d));
 
   async function carregar(atualizar = false) {
@@ -12,6 +29,7 @@
       for (const [k, v] of Object.entries(estado.filtros)) if (v) p.set(k, v);
       if (atualizar) p.set('atualizar', '1');
       estado.dados = await api('/api/embarque?' + p.toString());
+      estado.detalhes.clear(); estado.limite = PAGINA;
       document.getElementById('em-atualizado').textContent = 'Dados de ' + new Date(estado.dados.atualizadoEm).toLocaleString('pt-BR') + (estado.dados.msBanco ? ` · consulta ao banco: ${fmt.n(estado.dados.msBanco / 1000, 1)} s` : '');
       const sel = document.querySelector('#em-filtros [name=cliente]');
       if (sel.options.length === 1) sel.innerHTML += estado.dados.clientes.map((c) => `<option>${esc(c)}</option>`).join('');
@@ -55,12 +73,38 @@
       <tbody>${linhas.map((l) => `<tr><td>${esc(l[chave])}</td><td>${fmt.pct(l.amostra)}</td><td>${fmt.pct(l.lotes)}</td><td class="${difClasse(l.diferenca)}">${fmt.pp(l.diferenca)}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
+  function filtrada() {
+    const b = estado.busca.toLowerCase();
+    return estado.dados.embarques.filter((e) => e.consolidado || !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos].join(' ').toLowerCase().includes(b));
+  }
+  function linhasLista() {
+    const lista = filtrada(), mostrar = lista.slice(0, estado.limite);
+    const resto = lista.length - mostrar.length;
+    return mostrar.map((e) => `<tr class="click ${e.consolidado ? 'consol' : ''} ${e.chave === estado.chave ? 'sel' : ''}" data-chave="${esc(e.chave)}"><td>${e.consolidado ? '<b>Σ Todas</b> (' + esc(e.guia) + ')' : esc(e.guia)}</td><td>${periodo(e)}</td><td>${esc(e.contrato)}</td>
+            <td class="esq">${esc(e.cliente)}</td><td class="esq">${esc(e.amostras || 'sem amostra')}</td><td>${fmt.n(e.sacas, 1)}</td>
+            <td>${aderenciaPill(e.aderenciaPeneira)}</td><td>${aderenciaPill(e.aderenciaTipo)}</td><td>${n(e.defeitoAmostra)}</td>
+            <td class="${e.difDefeito > 0 ? 'neg' : e.difDefeito < 0 ? 'pos' : ''}">${n(e.defeitoLotes)}</td></tr>`).join('')
+      + (resto > 0 ? `<tr class="mais"><td colspan="10"><button type="button" class="btn sec" id="em-mais">Mostrar mais ${fmt.n(Math.min(resto, PAGINA))} de ${fmt.n(resto)} restantes</button></td></tr>` : '')
+      + (!lista.length ? '<tr><td colspan="10" class="vazio">Nenhum embarque encontrado.</td></tr>' : '');
+  }
+  function ligarLista() {
+    const corpo = document.getElementById('em-corpo');
+    corpo.querySelectorAll('tr[data-chave]').forEach((tr) => tr.onclick = () => abrirEmbarque(tr.dataset.chave));
+    const mais = document.getElementById('em-mais');
+    if (mais) mais.onclick = () => { estado.limite += PAGINA; corpo.innerHTML = linhasLista(); ligarLista(); };
+  }
+  function abrirEmbarque(chave) {
+    estado.chave = chave; desenhar();
+    if (window.innerWidth < 860) document.getElementById('em-det')?.scrollIntoView({ behavior: 'smooth' });
+  }
+
   function desenhar() {
     const d = estado.dados, k = d.kpis, area = document.getElementById('em-area');
     const b = estado.busca.toLowerCase();
-    const lista = d.embarques.filter((e) => e.consolidado || !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos].join(' ').toLowerCase().includes(b));
     const resumo = d.embarques.find((e) => e.chave === estado.chave);
-    const det = resumo && d.detalhes[estado.chave] ? { ...resumo, ...d.detalhes[estado.chave] } : null;
+    const detDados = resumo ? estado.detalhes.get(chaveDet(estado.chave)) : undefined;
+    const det = resumo && detDados && !detDados.erro ? { ...resumo, ...detDados } : null;
+    if (resumo && detDados === undefined) buscarDetalhe(estado.chave);
     const pens = det ? det.peneiras.map((p) => p.peneira) : [];
     area.innerHTML = `
       <div class="kpis">
@@ -70,15 +114,14 @@
         <div class="kpi"><div class="t">Defeito amostra / lotes</div><div class="v">${n(k.defeitoAmostra)} / ${n(k.defeitoLotes)}</div><div class="d">${k.acimaDefeito} embarques com lotes acima da amostra</div></div>
       </div>
       <div class="grade">
-        <div class="card ${det ? '' : 'full'}"><h2>Embarques</h2><p class="sub">Guia de embarque + contrato de venda · toque para detalhar</p>
+        <div class="card ${resumo ? '' : 'full'}"><h2>Embarques</h2><p class="sub">Guia de embarque + contrato de venda · toque para detalhar</p>
           <input class="busca" id="em-busca" placeholder="Buscar guia, contrato, cliente, amostra ou tipo" value="${esc(estado.busca)}">
           <div class="tabela lista-contratos"><table><thead><tr><th>Guia</th><th>Data</th><th>Contrato</th><th class="esq">Cliente</th><th class="esq">Amostra</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Defeito am.</th><th>Defeito lotes</th></tr></thead>
-          <tbody>${lista.map((e) => `<tr class="click ${e.consolidado ? 'consol' : ''} ${e.chave === estado.chave ? 'sel' : ''}" data-chave="${esc(e.chave)}"><td>${e.consolidado ? '<b>Σ Todas</b> (' + esc(e.guia) + ')' : esc(e.guia)}</td><td>${periodo(e)}</td><td>${esc(e.contrato)}</td>
-            <td class="esq">${esc(e.cliente)}</td><td class="esq">${esc(e.amostras || 'sem amostra')}</td><td>${fmt.n(e.sacas, 1)}</td>
-            <td>${aderenciaPill(e.aderenciaPeneira)}</td><td>${aderenciaPill(e.aderenciaTipo)}</td><td>${n(e.defeitoAmostra)}</td>
-            <td class="${e.difDefeito > 0 ? 'neg' : e.difDefeito < 0 ? 'pos' : ''}">${n(e.defeitoLotes)}</td></tr>`).join('')}</tbody></table></div></div>
+          <tbody id="em-corpo">${linhasLista()}</tbody></table></div></div>
+        ${resumo && !det ? `<div class="card" id="em-det"><h2>${resumo.consolidado ? `Contrato ${esc(resumo.contrato)} · todas as ${esc(resumo.guia)}` : `${esc(resumo.guia)} · ${esc(resumo.contrato)}`}</h2>
+          ${detDados && detDados.erro ? `<div class="aviso">${esc(detDados.erro)}</div>` : '<p class="sub">Carregando detalhe…</p><div class="carregando" style="height:120px"></div>'}</div>` : ''}
         ${det ? `
-        <div class="card"><h2>${det.consolidado ? `Contrato ${esc(det.contrato)} · todas as ${esc(det.guia)}` : `${esc(det.guia)} · ${esc(det.contrato)}`}</h2><p class="sub">${esc(det.cliente)} · ${periodo(det)} · amostra ${esc(det.amostras || '–')}</p>
+        <div class="card" id="em-det"><h2>${det.consolidado ? `Contrato ${esc(det.contrato)} · todas as ${esc(det.guia)}` : `${esc(det.guia)} · ${esc(det.contrato)}`}</h2><p class="sub">${esc(det.cliente)} · ${periodo(det)} · amostra ${esc(det.amostras || '–')}</p>
           <div class="kpis mini">
             <div class="kpi"><div class="t">Sacas</div><div class="v">${fmt.n(det.sacas, 1)}</div><div class="d">${det.nLotes} lotes</div></div>
             <div class="kpi"><div class="t">Defeito amostra</div><div class="v">${n(det.defeitoAmostra)}</div></div>
@@ -111,11 +154,11 @@
       Defeito do lote = campo Defeito do lote (ou o tipo de defeito, se vazio). Tipos de produto ligados aos grupos de config/mapeamento-gs.json.</div>`;
     if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); if (det.porGuia) gGuias('em-g-guias', det.porGuia); }
     const bx = document.getElementById('em-busca');
-    bx.oninput = () => { estado.busca = bx.value; const pos = bx.selectionStart; desenhar(); const nb = document.getElementById('em-busca'); nb.focus(); nb.setSelectionRange(pos, pos); };
-    area.querySelectorAll('tr[data-chave]').forEach((tr) => tr.onclick = () => {
-      estado.chave = tr.dataset.chave; desenhar(); // já está tudo na tela, não volta ao servidor
-      if (window.innerWidth < 860) document.getElementById('em-g-pen')?.closest('.card').scrollIntoView({ behavior: 'smooth' });
-    });
+    let t = null;
+    bx.oninput = () => { clearTimeout(t); t = setTimeout(() => { estado.busca = bx.value; estado.limite = PAGINA; document.getElementById('em-corpo').innerHTML = linhasLista(); ligarLista(); }, 150); };
+    ligarLista();
+    // linhas da tabela "comparação entre as guias" (no detalhe consolidado)
+    document.getElementById('em-det')?.querySelectorAll('tr[data-chave]').forEach((tr) => tr.onclick = () => abrirEmbarque(tr.dataset.chave));
   }
 
   async function render(main) {

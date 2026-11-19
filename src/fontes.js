@@ -257,9 +257,9 @@ SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, lin.idEmpresa, c
   LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = lc.idpeneira`;
 
 const cacheE = { dados: null, quando: 0, carregando: null };
-async function carregarEmbarque({ db, forcar = false }) {
-  const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
-  if (!forcar && cacheE.dados && Date.now() - cacheE.quando < ttl) return cacheE.dados;
+// Quando o cache vence, quem pede recebe na hora os dados que já estão em memória e a consulta nova
+// roda por trás (ninguém fica esperando o banco). Só espera na primeira carga ou no botão ↻.
+function recarregarEmbarque(db) {
   if (cacheE.carregando) return cacheE.carregando; // vários pedidos ao mesmo tempo: uma consulta só
   cacheE.carregando = (async () => {
     const t0 = Date.now();
@@ -272,11 +272,24 @@ async function carregarEmbarque({ db, forcar = false }) {
       const r = info.get(a.gsbx + '|' + a.idContrato);
       if (r) amostras.push({ ...a, guia: r.guia, data: r.data, contrato: r.contrato, cliente: r.cliente });
     }
-    cacheE.dados = { amostras, lotes, atualizadoEm: new Date().toISOString(), msBanco: Date.now() - t0 };
+    const dados = { amostras, lotes, atualizadoEm: new Date().toISOString(), msBanco: Date.now() - t0 };
+    if (typeof module.exports.aoCarregarEmbarque === 'function') {
+      try { module.exports.aoCarregarEmbarque(dados); } catch (e) { console.error(e); } // já deixa o relatório montado
+    }
+    cacheE.dados = dados;
     cacheE.quando = Date.now();
-    return cacheE.dados;
+    return dados;
   })();
-  try { return await cacheE.carregando; } finally { cacheE.carregando = null; }
+  cacheE.carregando.catch(() => {}).finally(() => { cacheE.carregando = null; });
+  return cacheE.carregando;
+}
+async function carregarEmbarque({ db, forcar = false }) {
+  const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
+  if (!forcar && cacheE.dados) {
+    if (Date.now() - cacheE.quando >= ttl) recarregarEmbarque(db).catch((e) => console.error('Embarque (atualização em segundo plano):', e.message));
+    return cacheE.dados;
+  }
+  return recarregarEmbarque(db);
 }
 module.exports.carregarEmbarque = carregarEmbarque;
 module.exports.SQL_EMB_AMOSTRA = SQL_EMB_AMOSTRA;

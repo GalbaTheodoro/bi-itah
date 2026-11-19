@@ -43,6 +43,21 @@ app.use((req, res, next) => {
 
 // ---------- Rotas públicas ----------
 // Diagnóstico rápido (sem senhas): abre /api/saude no navegador
+// Respostas JSON grandes vão compactadas (gzip): a lista de embarques cai para ~1/10 do tamanho
+const zlib = require('zlib');
+app.use('/api', (req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (obj) => {
+    const corpo = JSON.stringify(obj);
+    if (corpo.length < 4096 || !/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return json(obj);
+    res.set('Content-Type', 'application/json; charset=utf-8');
+    res.set('Content-Encoding', 'gzip');
+    res.set('Vary', 'Accept-Encoding');
+    return res.send(zlib.gzipSync(corpo, { level: 6 }));
+  };
+  next();
+});
+
 app.get('/api/saude', (req, res) => res.json({
   ok: true, vercel: !!process.env.VERCEL, node: process.version, https: req.secure,
   variaveis: ['DB_SERVER', 'DB_DATABASE', 'DB_USER', 'DB_PASSWORD', 'SESSION_SECRET', 'USER_TABLE', 'USER_COL_LOGIN', 'USER_COL_SENHA']
@@ -230,9 +245,26 @@ app.get('/api/embarque', async (req, res, next) => {
     if (DEMO) return res.status(400).json({ erro: 'Este relatório precisa do banco (use o iniciar.bat).' });
     const d = await fontes.carregarEmbarque({ db, forcar: req.query.atualizar === '1' });
     const data = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
-    res.json({ ...relEmb.gerar(d, { de: data(req.query.de), ate: data(req.query.ate), cliente: req.query.cliente || null, contrato: req.query.contrato || null }), atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
+    res.json({ ...relEmb.gerar(d, filtrosEmb(req.query)), atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
   } catch (e) { next(e); }
 });
+app.get('/api/embarque/detalhe', async (req, res, next) => {
+  try {
+    if (DEMO) return res.status(400).json({ erro: 'Este relatório precisa do banco (use o iniciar.bat).' });
+    const d = await fontes.carregarEmbarque({ db });
+    const det = relEmb.detalhe(d, filtrosEmb(req.query), req.query.chave);
+    if (!det) return res.status(404).json({ erro: 'Embarque não encontrado (os dados podem ter sido atualizados: clique em Aplicar).' });
+    res.json(det);
+  } catch (e) { next(e); }
+});
+let usoEmb = 0; // último uso do relatório (a atualização em segundo plano só roda se alguém estiver usando)
+function filtrosEmb(q) {
+  usoEmb = Date.now();
+  const data = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : null);
+  return { de: data(q.de), ate: data(q.ate), cliente: q.cliente || null, contrato: q.contrato || null };
+}
+// relatório já montado a cada carga do banco
+fontes.aoCarregarEmbarque = (d) => relEmb.aquecer(d);
 
 // ----- Dados da empresa (cabeçalho do PDF): ?ids=1,2 -> empresas do relatório; sem ids -> empresa padrão
 app.get('/api/empresa', async (req, res, next) => {
@@ -268,6 +300,15 @@ if (!process.env.VERCEL) {
     execFile(process.execPath, [path.join(__dirname, 'scripts', 'explorar.js')], { cwd: __dirname, timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (err, out, errOut) => {
       try { require('fs').writeFileSync(path.join(__dirname, 'explorar.txt'), (out || '') + (errOut || '') + (err ? '\nERRO: ' + err.message : '')); } catch (_) {}
     });
+  }
+
+  // Deixa o relatório de Embarque carregado e sempre atualizado em segundo plano: ninguém espera o banco
+  if (!DEMO) {
+    const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
+    const aquecerEmb = () => fontes.carregarEmbarque({ db, forcar: true }).then((d) => console.log(`Embarque carregado (${(d.msBanco / 1000).toFixed(1)} s no banco)`))
+      .catch((e) => console.error('Embarque: falha ao carregar em segundo plano:', e.message));
+    setTimeout(aquecerEmb, 2000);
+    setInterval(() => { if (Date.now() - usoEmb < 30 * 60 * 1000) aquecerEmb(); }, ttl).unref();
   }
 
   const servidor = app.listen(PORT, () => {

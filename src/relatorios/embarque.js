@@ -134,8 +134,27 @@ function consolidar(guias) {
   return c;
 }
 
+// montado uma vez por carga do banco (lista, índice por chave e opções dos filtros)
 const cacheMontar = new WeakMap();
-function montarCache(d) { if (!cacheMontar.has(d)) cacheMontar.set(d, montar(d)); return cacheMontar.get(d); }
+function base(d) {
+  if (!cacheMontar.has(d)) {
+    const lista = montar(d);
+    cacheMontar.set(d, {
+      lista,
+      porChave: new Map(lista.map((e) => [e.chave, e])),
+      clientes: [...new Set(lista.map((x) => x.cliente).filter(Boolean))].sort(),
+      contratos: [...new Set(lista.map((x) => x.contrato).filter(Boolean))].sort((a, b) => b.localeCompare(a, 'pt-BR', { numeric: true })),
+    });
+  }
+  return cacheMontar.get(d);
+}
+const montarCache = (d) => base(d).lista;
+
+function filtrar(d, f) {
+  const de = f.de || '0000-00-00', ate = f.ate || '9999-99-99';
+  const c = f.contrato ? String(f.contrato).toLowerCase() : '';
+  return montarCache(d).filter((e) => (!e.data || (e.data >= de && e.data <= ate)) && (!f.cliente || e.cliente === f.cliente) && (!c || e.contrato.toLowerCase().includes(c)));
+}
 
 function detalheDe(e) {
   const { penA, penL, grA, grL, lotes, sacasTipo, amostras, porGuia } = e._det;
@@ -151,8 +170,7 @@ function detalheDe(e) {
 }
 
 function gerar(d, f) {
-  const de = f.de || '0000-00-00', ate = f.ate || '9999-99-99';
-  let lista = montarCache(d).filter((e) => (!e.data || (e.data >= de && e.data <= ate)) && (!f.cliente || e.cliente === f.cliente) && (!f.contrato || e.contrato.toLowerCase().includes(String(f.contrato).toLowerCase())));
+  const lista = filtrar(d, f);
   lista.sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.guia.localeCompare(a.guia));
   // Filtrou contrato: cada contrato com mais de uma guia ganha uma linha "todas as guias" no topo
   const consolidados = [];
@@ -163,10 +181,8 @@ function gerar(d, f) {
   }
   const comAmostra = lista.filter((e) => e.aderenciaPeneira !== null || e.aderenciaTipo !== null || e.defeitoAmostra !== null);
   const pond = (k) => { let s = 0, v = 0; for (const e of lista) if (e[k] !== null) { s += e[k] * e.sacas; v += e.sacas; } return v ? r2(s / v) : null; };
-
-  // todos os detalhes vão juntos: na tela, abrir um embarque não precisa voltar ao servidor
-  const detalhes = {};
-  for (const e of [...consolidados, ...lista]) detalhes[e.chave] = detalheDe(e);
+  const b = base(d);
+  // a lista vai sem os detalhes (lotes, peneiras): o detalhe de cada guia vem em /api/embarque/detalhe
   return {
     kpis: {
       embarques: lista.length, comAmostra: comAmostra.length, sacas: r2(lista.reduce((s, x) => s + x.sacas, 0)),
@@ -174,13 +190,32 @@ function gerar(d, f) {
       defeitoAmostra: pond('defeitoAmostra'), defeitoLotes: pond('defeitoLotes'),
       acimaDefeito: lista.filter((x) => x.difDefeito > 0).length,
     },
-    embarques: [...consolidados, ...lista].map((x) => ({ ...x, _det: undefined })),
+    embarques: [...consolidados, ...lista].map(({ _det, ...x }) => x),
     consolidados: consolidados.map((x) => x.chave),
     empresas: idsEmpresa(lista),
-    clientes: [...new Set(montarCache(d).map((x) => x.cliente).filter(Boolean))].sort(),
-    contratos: [...new Set(montarCache(d).map((x) => x.contrato).filter(Boolean))].sort((a, b) => b.localeCompare(a, 'pt-BR', { numeric: true })),
-    detalhes,
+    clientes: b.clientes,
+    contratos: b.contratos,
   };
 }
 
-module.exports = { gerar };
+// Detalhe de um embarque (ou de "todas as guias" do contrato, respeitando os filtros)
+function detalhe(d, f, chave) {
+  chave = String(chave || '');
+  if (chave.startsWith('TODAS|')) {
+    const contrato = chave.slice(6);
+    const gs = filtrar(d, f).filter((e) => e.contrato === contrato);
+    if (gs.length < 2) return null;
+    const c = consolidar(gs);
+    const { _det, ...resumo } = c;
+    return { ...resumo, ...detalheDe(c) };
+  }
+  const e = base(d).porChave.get(chave);
+  if (!e) return null;
+  const { _det, ...resumo } = e;
+  return { ...resumo, ...detalheDe(e) };
+}
+
+// Deixa tudo montado logo depois de carregar do banco
+function aquecer(d) { base(d); }
+
+module.exports = { gerar, detalhe, aquecer };
