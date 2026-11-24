@@ -12,6 +12,7 @@ const relGS = require('./src/relatorios/gs');
 const relCV = require('./src/relatorios/compravenda');
 const relLucro = require('./src/relatorios/lucro');
 const relEmb = require('./src/relatorios/embarque');
+const relEst = require('./src/relatorios/estoque');
 const empresa = require('./src/empresa');
 
 const DEMO = process.argv.includes('--demo') || process.env.DEMO === '1';
@@ -265,6 +266,19 @@ function filtrosEmb(q) {
 }
 // relatório já montado a cada carga do banco
 fontes.aoCarregarEmbarque = (d) => relEmb.aquecer(d);
+
+// ----- Relatório 6: Estoque (dbo.VW_estoque) -----
+app.get('/api/estoque', async (req, res, next) => {
+  try {
+    if (DEMO) return res.status(400).json({ erro: 'Este relatório precisa do banco (use o iniciar.bat).' });
+    const d = await fontes.carregarEstoque({ db, forcar: req.query.atualizar === '1' });
+    const f = {};
+    for (const k of Object.keys(relEst.DIMS)) if (req.query[k]) f[k] = String(req.query[k]);
+    f.cruzarLinhas = req.query.linhas || null;
+    f.cruzarColunas = req.query.colunas || null;
+    res.json({ ...relEst.gerar(d, f), opcoes: relEst.opcoes(d), filtros: f, atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
+  } catch (e) { next(e); }
+});
 
 // ----- Dados da empresa (cabeçalho do PDF): ?ids=1,2 -> empresas do relatório; sem ids -> empresa padrão
 app.get('/api/empresa', async (req, res, next) => {

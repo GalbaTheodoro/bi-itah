@@ -315,3 +315,36 @@ async function carregarEmbarque({ db, forcar = false }) {
 module.exports.carregarEmbarque = carregarEmbarque;
 module.exports.SQL_EMB_AMOSTRA = SQL_EMB_AMOSTRA;
 module.exports.SQL_EMB_LOTES = SQL_EMB_LOTES;
+
+// ================= Estoque (dbo.VW_estoque) =================
+// A view traz uma linha por posição (localização) do lote; aqui já vem somado por lote + status + armazém.
+// Status: Disponivel, Warrant, En Servico (em guia de serviço aberta), A transferir, A Sair (guia de saída aberta).
+const SQL_ESTOQUE = `
+SELECT LTRIM(RTRIM(v.lote)) AS lote, MAX(v.data) AS data,
+       LTRIM(RTRIM(v.Cliente)) AS cliente, v.Tipodom AS tipoDom, LTRIM(RTRIM(v.armazem)) AS armazem,
+       LTRIM(RTRIM(v.Status)) AS status, LTRIM(RTRIM(v.Tipo)) AS tipo, LTRIM(RTRIM(v.[padrão])) AS padrao,
+       LTRIM(RTRIM(v.Bebida)) AS bebida,
+       SUM(ISNULL(v.volume, 0)) AS sacas, SUM(ISNULL(v.pesoliquido, 0)) AS peso, COUNT(*) AS posicoes
+  FROM dbo.VW_estoque v
+ GROUP BY v.lote, v.Cliente, v.Tipodom, v.armazem, v.Status, v.Tipo, v.[padrão], v.Bebida`;
+
+const cacheEst = { dados: null, quando: 0 };
+async function carregarEstoque({ db, forcar = false }) {
+  const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
+  if (!forcar && cacheEst.dados && Date.now() - cacheEst.quando < ttl) return cacheEst.dados;
+  const t0 = Date.now();
+  const linhas = await db.query(SQL_ESTOQUE);
+  cacheEst.dados = {
+    linhas: linhas.map((r) => ({
+      lote: txtOuNull(r.lote) || '(sem número)', data: dia(r.data),
+      cliente: txtOuNull(r.cliente), tipoDom: txtOuNull(r.tipoDom), armazem: txtOuNull(r.armazem),
+      status: txtOuNull(r.status), tipo: txtOuNull(r.tipo), padrao: txtOuNull(r.padrao), bebida: txtOuNull(r.bebida),
+      sacas: Number(r.sacas) || 0, peso: Number(r.peso) || 0, posicoes: Number(r.posicoes) || 0,
+    })),
+    atualizadoEm: new Date().toISOString(), msBanco: Date.now() - t0,
+  };
+  cacheEst.quando = Date.now();
+  return cacheEst.dados;
+}
+module.exports.carregarEstoque = carregarEstoque;
+module.exports.SQL_ESTOQUE = SQL_ESTOQUE;
