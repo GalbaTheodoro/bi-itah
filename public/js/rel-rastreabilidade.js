@@ -27,6 +27,7 @@
       .ra-tab td, .ra-tab th { vertical-align: top; }
       .ra-tab tr.raiz td { background: #f6efe4; font-weight: 600; }
       .ra-tab .doc { font-weight: 600; }
+      .ra-tab .contrato { display: block; font-size: 11.5px; color: #2f6640; font-weight: 600; margin-top: 2px; }
       .ra-tab .prod { white-space: normal; min-width: 170px; max-width: 300px; text-align: left; }
       .ra-tab .prod .dom, .ra-tab .prod .para { display: block; font-size: 11.5px; color: var(--muted); }
       .ra-tab .vindo { white-space: normal; max-width: 260px; color: var(--muted); font-size: 12px; text-align: left; }
@@ -101,25 +102,29 @@
     }
     return h;
   }
+  const contratoDe = (l) => (l.Movimento === 'ENTRADA' ? `<span class="contrato">Contrato de compra ${l.Contrato ? esc(l.Contrato) : '–'}</span>` : '');
   const movDe = (l, raiz) => (raiz ? '<span class="mov mov-LOTE">Lote pesquisado</span>'
-    : `<span class="mov mov-${esc(l.Movimento)}">${NOMES_MOV[l.Movimento] || esc(l.Movimento)}</span><span class="doc">${tx(l.Documento)}</span>`);
+    : `<span class="mov mov-${esc(l.Movimento)}">${NOMES_MOV[l.Movimento] || esc(l.Movimento)}</span><span class="doc">${tx(l.Documento)}</span>${contratoDe(l)}`);
   function loteDe(l) {
     if (l.Lote) return esc(l.Lote) + (l.Ciclo ? '<span class="ciclo" title="Este lote volta a aparecer num caminho que já passou por ele">(repetido)</span>' : '');
     return l.Movimento === 'SERVICO' ? '<span class="semlote">sem lote resultado ainda</span>' : '–';
   }
+  // tipo de produto (peneira), padrão e bebida do lote da linha
+  const infoTh = '<th class="esq">Tipo (peneira)</th><th class="esq">Padrão</th><th class="esq">Bebida</th>';
+  const infoTd = (l, raiz) => `<td class="esq">${tx(l.Tipo)}</td><td class="esq">${tx(l.Padrao)}</td><td class="esq">${tx(l.Bebida)}</td>`;
   const vazio = (s) => `<div class="vazio" style="padding:10px 0">${s === 'V' ? 'Nenhuma origem encontrada para este lote.' : 'Este lote ainda não foi transferido, usado em serviço nem embarcado.'}</div>`;
   const soma = (ls, mov) => ls.filter((l) => l.Movimento === mov).reduce((s, l) => s + Number(l.VolumeRastreado || 0), 0);
 
   function tabelaAgrupada(ls, s) {
     if (ls.length <= 1) return vazio(s);
     const ida = s === 'I';
-    return `<div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">Movimento / guia</th><th>Data</th><th>${ida ? 'Lote gerado' : 'Lote de origem'}</th><th class="esq">Produtor / domicílio</th>
+    return `<div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">Movimento / guia</th><th>Data</th><th>${ida ? 'Lote gerado' : 'Lote de origem'}</th>${infoTh}<th class="esq">Produtor / domicílio</th>
       <th class="esq">${ida ? 'Vindo do lote' : 'Usado para formar'}</th><th>Volume do movimento</th><th>% do lote pesquisado</th><th>Volume rastreado</th>${ida ? '<th>Saldo do lote</th><th>Saldo rastreado</th>' : ''}<th>Caminhos</th></tr></thead>
       <tbody>${ls.map((l) => { const raiz = l.Movimento === 'LOTE' && l.Nivel === 0; return `<tr class="${raiz ? 'raiz' : ''}">
-        <td class="esq">${movDe(l, raiz)}</td><td>${dt(l.DataDocumento)}</td><td>${loteDe(l)}</td><td class="prod">${raiz ? '' : produtorDe(l)}</td>
+        <td class="esq">${movDe(l, raiz)}</td><td>${dt(l.DataDocumento)}</td><td>${loteDe(l)}</td>${infoTd(l, raiz)}<td class="prod">${raiz ? '' : produtorDe(l)}</td>
         <td class="vindo">${raiz ? '' : tx(l.LotesAnteriores)}</td><td>${n2(l.VolumeMovimento)}</td><td>${raiz ? '100,00%' : pc(l.FracaoPct)}</td><td>${n2(l.VolumeRastreado)}</td>
         ${ida ? `<td>${n2(l.SaldoLote)}</td><td>${n2(l.SaldoRastreado)}</td>` : ''}<td>${raiz ? '' : l.Caminhos > 1 ? l.Caminhos + ' caminhos' : '1'}</td></tr>`; }).join('')}</tbody>
-      <tfoot><tr><th class="esq" colspan="7">${ida ? 'Total embarcado' : 'Total vindo de guias de entrada'}</th><th>${n2(soma(ls, ida ? 'EMBARQUE' : 'ENTRADA'))}</th>${ida ? '<th></th><th></th>' : ''}<th></th></tr></tfoot></table></div>
+      <tfoot><tr><th class="esq" colspan="10">${ida ? 'Total embarcado' : 'Total vindo de guias de entrada'}</th><th>${n2(soma(ls, ida ? 'EMBARQUE' : 'ENTRADA'))}</th>${ida ? '<th></th><th></th>' : ''}<th></th></tr></tfoot></table></div>
       <div class="legenda-calc">Mesma guia e mesmo lote alcançados por mais de um caminho aparecem numa linha só, com os volumes somados. Para ver cada caminho, use "Caminho completo (árvore)".</div>`;
   }
 
@@ -127,17 +132,17 @@
     if (ls.length <= 1) return vazio(s);
     const ida = s === 'I';
     const temFilhos = new Set(ls.map((l) => l.SeqPai).filter((x) => x !== null && x !== undefined));
-    return `<div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">Caminho</th><th>Data</th><th>${ida ? 'Lote gerado' : 'Lote de origem'}</th><th class="esq">Produtor / domicílio</th>
+    return `<div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">Caminho</th><th>Data</th><th>${ida ? 'Lote gerado' : 'Lote de origem'}</th>${infoTh}<th class="esq">Produtor / domicílio</th>
       <th>Volume do movimento</th><th>Participação na guia</th><th>% do lote pesquisado</th><th>Volume rastreado</th>${ida ? '<th>Saldo do lote</th><th>Saldo rastreado</th>' : ''}</tr></thead>
       <tbody>${ls.map((l) => { const raiz = l.Nivel === 0;
         const abre = temFilhos.has(l.Seq) ? `<button type="button" class="abre" data-seq="${l.Seq}" aria-expanded="true" title="Abrir / fechar">▾</button>` : '<span class="abre vazio">▾</span>';
         const part = l.Movimento === 'SERVICO' && l.ProporcaoPct !== null && l.ProporcaoPct !== undefined
           ? `${pc(l.ProporcaoPct)} <span class="sub">(${n2(l.VolumeEntradaGuia)} de ${n2(l.TotalEntradaGuia)})</span>` : '–';
         return `<tr class="${raiz ? 'raiz' : ''}" data-seq="${l.Seq}" data-pai="${l.SeqPai ?? ''}">
-          <td class="esq"><span style="display:inline-block;width:${l.Nivel * 22}px"></span>${abre}${movDe(l, raiz)}</td><td>${dt(l.DataDocumento)}</td><td>${loteDe(l)}</td>
+          <td class="esq"><span style="display:inline-block;width:${l.Nivel * 22}px"></span>${abre}${movDe(l, raiz)}</td><td>${dt(l.DataDocumento)}</td><td>${loteDe(l)}</td>${infoTd(l, raiz)}
           <td class="prod">${raiz ? '' : produtorDe(l)}</td><td>${n2(l.VolumeMovimento)}</td><td>${part}</td><td>${raiz ? '100,00%' : pc(l.FracaoPct)}</td><td>${n2(l.VolumeRastreado)}</td>
           ${ida ? `<td>${n2(l.SaldoLote)}</td><td>${n2(l.SaldoRastreado)}</td>` : ''}</tr>`; }).join('')}</tbody>
-      <tfoot><tr><th class="esq" colspan="7">${ida ? 'Total embarcado' : 'Total vindo de guias de entrada'}</th><th>${n2(soma(ls, ida ? 'EMBARQUE' : 'ENTRADA'))}</th>${ida ? '<th></th><th></th>' : ''}</tr></tfoot></table></div>`;
+      <tfoot><tr><th class="esq" colspan="10">${ida ? 'Total embarcado' : 'Total vindo de guias de entrada'}</th><th>${n2(soma(ls, ida ? 'EMBARQUE' : 'ENTRADA'))}</th>${ida ? '<th></th><th></th>' : ''}</tr></tfoot></table></div>`;
   }
 
   // abre/fecha os ramos da árvore
@@ -165,20 +170,20 @@
     const mapa = new Map();
     for (const o of origem) {
       const k = o.IDDomicilio ?? 'sem:' + (o.Produtor || '');
-      const g = mapa.get(k) || { Produtor: o.Produtor, Domicilio: o.Domicilio, guias: [], Pct: 0, Vol: 0, Saldo: 0 };
-      g.guias.push(o.Guia); g.Pct += Number(o.PctDoLote || 0); g.Vol += Number(o.VolumeOrigem || 0); g.Saldo += Number(o.VolumeNoSaldo || 0);
+      const g = mapa.get(k) || { Produtor: o.Produtor, Domicilio: o.Domicilio, guias: [], contratos: [], Pct: 0, Vol: 0, Saldo: 0 };
+      g.guias.push(o.Guia); if (o.Contrato) g.contratos.push(...String(o.Contrato).split(', ')); g.Pct += Number(o.PctDoLote || 0); g.Vol += Number(o.VolumeOrigem || 0); g.Saldo += Number(o.VolumeNoSaldo || 0);
       mapa.set(k, g);
     }
     const prods = [...mapa.values()].sort((a, b) => b.Vol - a.Vol);
-    return `<div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">GR de entrada</th><th>Data</th><th class="esq">Produtor / domicílio</th><th class="esq">Desdobras</th>
+    return `<div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">GR de entrada</th><th class="esq">Contrato de compra</th><th>Data</th><th class="esq">Produtor / domicílio</th><th class="esq">Desdobras</th>${infoTh}
         <th>% do lote</th><th>Volume (sobre ${n2(lote.VolumeInicial)} inicial)</th><th>No saldo atual (${n2(lote.Saldo)})</th></tr></thead>
-      <tbody>${origem.map((o) => `<tr><td class="esq doc">${tx(o.Guia)}</td><td>${dt(o.Data)}</td><td class="prod">${prodCel(o)}</td><td class="vindo">${tx(o.Desdobras)}</td>
+      <tbody>${origem.map((o) => `<tr><td class="esq doc">${tx(o.Guia)}</td><td class="esq">${tx(o.Contrato)}</td><td>${dt(o.Data)}</td><td class="prod">${prodCel(o)}</td><td class="vindo">${tx(o.Desdobras)}</td>${infoTd(o)}
         <td>${pc(o.PctDoLote)}</td><td>${n2(o.VolumeOrigem)}</td><td>${n2(o.VolumeNoSaldo)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><th class="esq" colspan="4">${origem.length} ${origem.length === 1 ? 'guia' : 'guias'} de entrada</th><th>${pc(Math.min(total('PctDoLote'), 100))}</th><th>${n2(total('VolumeOrigem'))}</th><th>${n2(total('VolumeNoSaldo'))}</th></tr></tfoot></table></div>
+      <tfoot><tr><th class="esq" colspan="8">${origem.length} ${origem.length === 1 ? 'guia' : 'guias'} de entrada</th><th>${pc(Math.min(total('PctDoLote'), 100))}</th><th>${n2(total('VolumeOrigem'))}</th><th>${n2(total('VolumeNoSaldo'))}</th></tr></tfoot></table></div>
       <h3 style="font-size:14px;margin:14px 0 6px">Por produtor</h3>
-      <div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">Produtor / domicílio</th><th class="esq">GR de entrada</th><th>% do lote</th><th>Volume</th><th>No saldo atual</th></tr></thead>
-      <tbody>${prods.map((g) => `<tr><td class="prod">${prodCel(g)}</td><td class="vindo">${esc([...new Set(g.guias)].join(', '))}</td><td>${pc(Math.min(g.Pct, 100))}</td><td>${n2(g.Vol)}</td><td>${n2(g.Saldo)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><th class="esq" colspan="2">${prods.length} ${prods.length === 1 ? 'produtor' : 'produtores'}</th><th>${pc(Math.min(total('PctDoLote'), 100))}</th><th>${n2(total('VolumeOrigem'))}</th><th>${n2(total('VolumeNoSaldo'))}</th></tr></tfoot></table></div>`;
+      <div class="tabela"><table class="ra-tab"><thead><tr><th class="esq">Produtor / domicílio</th><th class="esq">GR de entrada</th><th class="esq">Contrato de compra</th><th>% do lote</th><th>Volume</th><th>No saldo atual</th></tr></thead>
+      <tbody>${prods.map((g) => `<tr><td class="prod">${prodCel(g)}</td><td class="vindo">${esc([...new Set(g.guias)].join(', '))}</td><td class="esq">${esc([...new Set(g.contratos)].join(', ') || '–')}</td><td>${pc(Math.min(g.Pct, 100))}</td><td>${n2(g.Vol)}</td><td>${n2(g.Saldo)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><th class="esq" colspan="3">${prods.length} ${prods.length === 1 ? 'produtor' : 'produtores'}</th><th>${pc(Math.min(total('PctDoLote'), 100))}</th><th>${n2(total('VolumeOrigem'))}</th><th>${n2(total('VolumeNoSaldo'))}</th></tr></tfoot></table></div>`;
   }
 
   function desenhar() {
@@ -188,12 +193,14 @@
     const kpi = (t, v, d = '') => `<div class="kpi"><div class="t">${t}</div><div class="v">${v}</div>${d ? `<div class="d">${d}</div>` : ''}</div>`;
     const tab = (ls, x) => (estado.visao === 'agrupado' ? tabelaAgrupada(so(agrupado, x), x) : tabelaArvore(so(linhas, x), x));
     area.innerHTML = `
-      <div class="card" style="margin-bottom:14px"><h2>Lote ${tx(lote.Lote)}</h2><p class="sub">Data ${dt(lote.Data)} · id ${esc(lote.IDLote)}</p>
+      <div class="card" style="margin-bottom:14px"><h2>Lote ${tx(lote.Lote)}</h2><p class="sub">Data ${dt(lote.Data)} · id ${esc(lote.IDLote)} · Tipo (peneira) <b>${tx(lote.Tipo)}</b> · Padrão <b>${tx(lote.Padrao)}</b> · Bebida <b>${tx(lote.Bebida)}</b></p>
         <div class="kpis" style="margin-bottom:6px">
           ${kpi('Volume inicial', n2(lote.VolumeInicial))}${kpi('Saldo atual', n2(lote.Saldo))}
           ${mostraIda ? kpi('Embarcado', n2(lote.TotalEmbarcado || 0)) + kpi('Em estoque (todos os lotes)', n2(lote.TotalEmEstoque || 0)) + (Number(lote.TotalEmServico || 0) > 0 ? kpi('Em serviço sem resultado', n2(lote.TotalEmServico)) : '') : ''}
           ${mostraOrigem ? kpi('Origem em guias de entrada', n2(lote.TotalOrigemEntradas || 0)) + kpi('GR de entrada', fmt.n((origem || []).length)) + kpi('Produtores', fmt.n(new Set((origem || []).map((o) => o.IDDomicilio ?? o.Produtor)).size)) : ''}
         </div>
+        ${estado.dados.avisoInfo ? `<div class="aviso">${esc(estado.dados.avisoInfo)}</div>` : ''}
+        ${estado.dados.avisoContrato ? `<div class="aviso">${esc(estado.dados.avisoContrato)}</div>` : ''}
         ${lote.Truncado ? '<div class="aviso">O caminho deste lote é muito grande e o relatório foi cortado. Os totais podem estar incompletos.</div>' : ''}
         ${s !== 'O' ? `<div class="abas" id="ra-visao" style="margin:8px 0 0"><button type="button" data-v="agrupado" class="${estado.visao === 'agrupado' ? 'ativo' : ''}">Agrupado por guia e lote</button><button type="button" data-v="arvore" class="${estado.visao === 'arvore' ? 'ativo' : ''}">Caminho completo (árvore)</button></div>` : ''}
       </div>
