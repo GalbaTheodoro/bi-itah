@@ -121,13 +121,13 @@ function montarGuias({ entradas, saidas }, tipoDoLote = new Map()) {
   };
   for (const r of entradas) {
     const g = pegar(r);
-    if (!g._in.has(r.lote)) g._in.set(r.lote, { lote: r.lote, volume: r.volume, pen: {} });
+    if (!g._in.has(r.lote)) g._in.set(r.lote, { lote: r.lote, volume: r.volume, bebida: r.bebida || null, pen: {} });
     if (r.peneira && r.percentual > 0) {
       const l = g._in.get(r.lote);
       l.pen[r.peneira] = (l.pen[r.peneira] || 0) + r.percentual;
     }
   }
-  for (const r of saidas) pegar(r)._out.push({ lote: r.lote, volume: r.volume, tipo: r.tipo, defeito: r.defeito });
+  for (const r of saidas) pegar(r)._out.push({ lote: r.lote, volume: r.volume, tipo: r.tipo, defeito: r.defeito, bebida: r.bebida || null });
 
   for (const g of guias.values()) {
     const lotesIn = [...g._in.values()];
@@ -143,7 +143,7 @@ function montarGuias({ entradas, saidas }, tipoDoLote = new Map()) {
           pct[p] = (v / tot) * 100;
           sacasPen[p] = (sacasPen[p] || 0) + (l.volume * v) / tot;
         }
-        return { lote: l.lote, volume: l.volume, classificado: true, somaOriginal: r2(tot), pct };
+        return { lote: l.lote, volume: l.volume, bebida: l.bebida, classificado: true, somaOriginal: r2(tot), pct };
       }
       // Lote sem classificação por peneira, mas que é resultado de outra GS: usa o tipo de produto dele
       const tipo = tipoDoLote.get(l.lote);
@@ -152,10 +152,10 @@ function montarGuias({ entradas, saidas }, tipoDoLote = new Map()) {
         if (!grs.includes('Resíduo/Perdas')) {
           volClass += l.volume;
           grs.forEach((x) => { sacasGrupoTipo[x] = (sacasGrupoTipo[x] || 0) + l.volume / grs.length; });
-          return { lote: l.lote, volume: l.volume, classificado: true, porTipo: tipo, somaOriginal: 100, pct };
+          return { lote: l.lote, volume: l.volume, bebida: l.bebida, classificado: true, porTipo: tipo, somaOriginal: 100, pct };
         }
       }
-      return { lote: l.lote, volume: l.volume, classificado: false, somaOriginal: 0, pct };
+      return { lote: l.lote, volume: l.volume, bebida: l.bebida, classificado: false, somaOriginal: 0, pct };
     });
     g.volumeClassificado = volClass;
     g.cobertura = g.volumeDespejado > 0 ? (volClass / g.volumeDespejado) * 100 : 0;

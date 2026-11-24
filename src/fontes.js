@@ -5,11 +5,12 @@ const fs = require('fs');
 // Classificação das amostras vinculadas aos contratos de COMPRA (tipo = 0)
 const SQL_AMOSTRAS = `
 SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 40) AS fornecedor, c.IDEmpresa AS idEmpresa,
-       a.numero AS amostra, a.data AS dataAmostra, p.classificacao AS peneira, bc.percentual
+       a.numero AS amostra, a.data AS dataAmostra, bb.nome AS bebida, p.classificacao AS peneira, bc.percentual
   FROM tb_contrato_cv c
  INNER JOIN tb_domicilio d            ON d.id = c.iddomicilio
  INNER JOIN TB_CONTRATO_AMOSTRA ca    ON ca.IDContrato = c.id
  INNER JOIN tb_amostra a              ON a.id = ca.IDAmostra
+  LEFT JOIN tb_classificacao bb       ON bb.id = a.IDBebida
  INNER JOIN TB_BLEND_CLASSIFICACAO bc ON bc.idamostra = a.id
  INNER JOIN TB_CONFIGURACAO_PENEIRA p ON p.id = bc.idpeneira
  WHERE c.tipo = 0 AND bc.percentual > 0`;
@@ -17,7 +18,7 @@ SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 
 // Classificação dos lotes que entraram por contrato de compra
 const SQL_ENTRADAS = `
 SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 40) AS fornecedor, c.IDEmpresa AS idEmpresa,
-       l.numero AS lote, l.data AS dataEntrada, l.VolumeInicial AS volume, arma.nome AS armazem,
+       l.numero AS lote, l.data AS dataEntrada, l.VolumeInicial AS volume, arma.nome AS armazem, bb.nome AS bebida,
        p.classificacao AS peneira, lc.percentual
   FROM tb_lote l
  INNER JOIN tb_gc_entra e              ON e.idlote = l.id
@@ -27,6 +28,7 @@ SELECT c.numero AS contrato, c.quantidade, c.data AS dataContrato, LEFT(d.nome, 
  INNER JOIN TB_CONFIGURACAO_PENEIRA p  ON p.id = lc.idpeneira
   LEFT JOIN tb_gci g                   ON g.id = e.idgci
   LEFT JOIN TB_DOMICILIO arma          ON arma.id = g.iddomicilio
+  LEFT JOIN tb_classificacao bb        ON bb.id = l.IDBebida
  WHERE c.tipo = 0 AND lc.percentual > 0`;
 
 const cache = { dados: null, quando: 0 };
@@ -35,6 +37,13 @@ function dia(v) {
   if (!v) return null;
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return String(v).slice(0, 10);
+}
+
+// texto aparado, ou null se vazio (nome da bebida, etc.)
+function txtOuNull(v) {
+  if (v === null || v === undefined) return null;
+  const t = String(v).trim();
+  return t || null;
 }
 
 function limpar(r) {
@@ -50,6 +59,7 @@ function limpar(r) {
     dataAmostra: dia(r.dataAmostra),
     dataEntrada: dia(r.dataEntrada),
     armazem: r.armazem ? String(r.armazem).trim() : null,
+    bebida: txtOuNull(r.bebida),
   };
 }
 
@@ -73,10 +83,11 @@ async function carregar({ demo, db, forcar = false }) {
 // Café DESPEJADO na GS: lotes de entrada da guia + classificação por peneira de cada lote
 const SQL_GS_ENTRADA = `
 SELECT g.numero AS gs, g.datafinal, g.VolumeResult AS volumeResult, LEFT(d.nome, 40) AS armazem,
-       l.numero AS lote, le.volume, p.classificacao AS peneira, lc.percentual
+       l.numero AS lote, le.volume, bb.nome AS bebida, p.classificacao AS peneira, lc.percentual
   FROM tb_gs_lote_entrada le
  INNER JOIN tb_guia_servico g              ON g.id = le.idguiaservico
  INNER JOIN tb_lote l                      ON l.id = le.idlote
+  LEFT JOIN tb_classificacao bb            ON bb.id = l.IDBebida
   LEFT JOIN TB_DOMICILIO d                 ON d.id = g.IDDomicilio
   LEFT JOIN tb_lote_classificacao lc       ON lc.idlote = l.id AND lc.percentual > 0
   LEFT JOIN TB_CONFIGURACAO_PENEIRA p      ON p.id = lc.idpeneira
@@ -85,10 +96,11 @@ SELECT g.numero AS gs, g.datafinal, g.VolumeResult AS volumeResult, LEFT(d.nome,
 // RESULTADO da GS: lotes de saída com o tipo de produto
 const SQL_GS_SAIDA = `
 SELECT g.numero AS gs, g.datafinal, g.VolumeResult AS volumeResult, LEFT(d.nome, 40) AS armazem,
-       l.numero AS lote, ls.Volume AS volume, tp.nome AS tipo, l.defeito
+       l.numero AS lote, ls.Volume AS volume, tp.nome AS tipo, l.defeito, bb.nome AS bebida
   FROM tb_gs_lote_saida ls
  INNER JOIN tb_guia_servico g   ON g.id = ls.idguiaservico
  INNER JOIN tb_lote l           ON l.numero = ls.numero
+  LEFT JOIN tb_classificacao bb ON bb.id = l.IDBebida
   LEFT JOIN TB_TIPO_PRODUTO tp  ON tp.id = l.IDTipo_Prod
   LEFT JOIN TB_DOMICILIO d      ON d.id = g.IDDomicilio
  WHERE ls.Volume > 0`;
@@ -107,6 +119,7 @@ function limparGS(r) {
     percentual: r.percentual === null || r.percentual === undefined ? null : Number(r.percentual),
     tipo: r.tipo !== undefined ? (r.tipo ? String(r.tipo).trim() : '(sem tipo)') : undefined,
     defeito: r.defeito !== undefined && r.defeito !== null ? Number(String(r.defeito).replace(',', '.')) || 0 : undefined,
+    bebida: txtOuNull(r.bebida),
   };
 }
 
@@ -129,11 +142,12 @@ async function carregarGS({ demo, db, forcar = false }) {
 // Contratos de VENDA (tudo que não é compra: tipo <> 0) com a classificação da amostra
 const SQL_VENDAS_AMOSTRA = `
 SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quantidade, c.data AS dataContrato,
-       LEFT(d.nome, 40) AS cliente, c.IDEmpresa AS idEmpresa, a.numero AS amostra, p.classificacao AS peneira, bc.percentual
+       LEFT(d.nome, 40) AS cliente, c.IDEmpresa AS idEmpresa, a.numero AS amostra, bb.nome AS bebida, p.classificacao AS peneira, bc.percentual
   FROM tb_contrato_cv c
  INNER JOIN tb_domicilio d            ON d.id = c.iddomicilio
  INNER JOIN TB_CONTRATO_AMOSTRA ca    ON ca.IDContrato = c.id
  INNER JOIN tb_amostra a              ON a.id = ca.IDAmostra
+  LEFT JOIN tb_classificacao bb       ON bb.id = a.IDBebida
  INNER JOIN TB_BLEND_CLASSIFICACAO bc ON bc.idamostra = a.id
  INNER JOIN TB_CONFIGURACAO_PENEIRA p ON p.id = bc.idpeneira
  WHERE c.tipo <> 0 AND bc.percentual > 0`;
@@ -142,12 +156,13 @@ SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quan
 const SQL_VENDAS_LOTES = `
 SELECT c.numero AS contrato, COALESCE(NULLIF(c.quantidade, 0), c.Volume) AS quantidade, c.data AS dataContrato,
        LEFT(d.nome, 40) AS cliente, c.IDEmpresa AS idEmpresa, l.numero AS lote, l.VolumeInicial AS volume, tp.nome AS tipo,
-       p.classificacao AS peneira, lc.percentual
+       bb.nome AS bebida, p.classificacao AS peneira, lc.percentual
   FROM tb_contrato_cv c
  INNER JOIN tb_domicilio d                ON d.id = c.iddomicilio
  INNER JOIN TB_CONTRATO_LOTEDESPEJO ld    ON ld.IDContrato = c.id
  INNER JOIN tb_lote l                     ON l.id = ld.IDLote
   LEFT JOIN TB_TIPO_PRODUTO tp            ON tp.id = l.IDTipo_Prod
+  LEFT JOIN tb_classificacao bb           ON bb.id = l.IDBebida
   LEFT JOIN tb_lote_classificacao lc      ON lc.idlote = l.id AND lc.percentual > 0
   LEFT JOIN TB_CONFIGURACAO_PENEIRA p     ON p.id = lc.idpeneira
  WHERE c.tipo <> 0`;
@@ -159,6 +174,7 @@ function limparV(r) {
     cliente: r.cliente ? String(r.cliente).trim() : '(sem nome)', amostra: r.amostra ? String(r.amostra).trim() : undefined,
     lote: r.lote ? String(r.lote).trim() : undefined, tipo: r.tipo ? String(r.tipo).trim() : (r.lote ? '(sem tipo)' : undefined), volume: r.volume !== undefined ? Number(r.volume) || 0 : undefined,
     peneira: r.peneira ? String(r.peneira).trim() : null, percentual: r.percentual === null || r.percentual === undefined ? null : Number(r.percentual),
+    bebida: txtOuNull(r.bebida),
   };
 }
 async function carregarVendas({ demo, db, forcar = false }) {
@@ -188,7 +204,10 @@ async function carregarRastreio({ db, forcar = false }) {
   const ttl = (Number(process.env.CACHE_MINUTOS) || 5) * 60 * 1000;
   if (!forcar && cacheR.dados && Date.now() - cacheR.quando < ttl) return cacheR.dados;
   const [lotes, trans, gsEnt, gsSai, entradas, vendidos] = await Promise.all([
-    db.query(`SELECT id, LTRIM(RTRIM(Numero)) AS numero, ISNULL(VolumeInicial, 0) AS volIni, custoInicial, custoTotal FROM tb_lote`),
+    db.query(`SELECT l.id, LTRIM(RTRIM(l.Numero)) AS numero, ISNULL(l.VolumeInicial, 0) AS volIni, l.custoInicial, l.custoTotal,
+                     LTRIM(RTRIM(bb.nome)) AS bebida
+                FROM tb_lote l
+                LEFT JOIN tb_classificacao bb ON bb.id = l.IDBebida`),
     db.query(`SELECT IDLote AS de, IDLoteNovo AS para, SUM(ISNULL(Volume, 0)) AS vol FROM tb_trans_lote GROUP BY IDCab, IDLote, IDLoteNovo`),
     db.query(`SELECT IDGuiaServico AS gs, IDLote AS lote, SUM(ISNULL(Volume, 0)) AS vol FROM TB_GS_LOTE_ENTRADA GROUP BY IDGuiaServico, IDLote`),
     db.query(`SELECT IDGuiaServico AS gs, IDLote AS lote, SUM(ISNULL(Volume, 0)) AS vol FROM TB_GS_LOTE_SAIDA WHERE IDLote IS NOT NULL GROUP BY IDGuiaServico, IDLote`),
@@ -232,10 +251,11 @@ SELECT gs.ID AS linha, gs.IDGSBX AS gsbx, gs.IDLote AS idLote, gs.Volume AS volu
 const SQL_EMB_AMOSTRA = `
 WITH lin AS (${SQL_EMB_LINHAS}),
      pares AS (SELECT DISTINCT gsbx, idContrato FROM lin WHERE idContrato IS NOT NULL)
-SELECT pr.gsbx, pr.idContrato, a.Numero AS amostra, td.defeito AS defeito, p.classificacao AS peneira, bc.percentual
+SELECT pr.gsbx, pr.idContrato, a.Numero AS amostra, bb.nome AS bebida, td.defeito AS defeito, p.classificacao AS peneira, bc.percentual
   FROM pares pr
  INNER JOIN TB_CONTRATO_AMOSTRA ca      ON ca.IDContrato = pr.idContrato
  INNER JOIN tb_amostra a                ON a.id = ca.IDAmostra
+  LEFT JOIN tb_classificacao bb         ON bb.id = a.IDBebida
   LEFT JOIN tb_tipo_defeito td          ON td.id = a.idtipodefeito
   LEFT JOIN TB_BLEND_CLASSIFICACAO bc   ON bc.idamostra = a.id AND bc.percentual > 0
   LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = bc.idpeneira`;
@@ -245,7 +265,7 @@ WITH lin AS (${SQL_EMB_LINHAS})
 SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, lin.idEmpresa, c.Numero AS contrato,
        LEFT(COALESCE(NULLIF(LTRIM(RTRIM(dc.Nome)), ''), NULLIF(LTRIM(RTRIM(dd.Nome)), ''), lin.destinoTexto), 40) AS cliente,
        l.Numero AS lote, lin.volume, tp.Nome AS tipo, l.Defeito AS defeitoLote, tdl.defeito AS defeitoTipo,
-       l.Umidade AS umidade, p.classificacao AS peneira, lc.percentual
+       l.Umidade AS umidade, bb.nome AS bebida, p.classificacao AS peneira, lc.percentual
   FROM lin
  INNER JOIN tb_lote l                   ON l.id = lin.idLote
   LEFT JOIN tb_contrato_cv c            ON c.id = lin.idContrato
@@ -253,6 +273,7 @@ SELECT lin.linha, lin.gsbx, lin.guia, lin.data, lin.idContrato, lin.idEmpresa, c
   LEFT JOIN tb_domicilio dd             ON dd.id = lin.idDestino
   LEFT JOIN TB_TIPO_PRODUTO tp          ON tp.id = l.IDTipo_Prod
   LEFT JOIN tb_tipo_defeito tdl         ON tdl.id = l.IDTIPODEFEITO
+  LEFT JOIN tb_classificacao bb         ON bb.id = l.IDBebida
   LEFT JOIN tb_lote_classificacao lc    ON lc.idlote = l.id AND lc.percentual > 0
   LEFT JOIN TB_CONFIGURACAO_PENEIRA p   ON p.id = lc.idpeneira`;
 

@@ -45,14 +45,14 @@ function agrupar(d) {
   for (const r of d.amostras) {
     const e = pegar(r);
     const a = txt(r.amostra);
-    if (!e._am.has(a)) e._am.set(a, { amostra: a, defeito: num(r.defeito), pen: {} });
+    if (!e._am.has(a)) e._am.set(a, { amostra: a, bebida: txt(r.bebida) || null, defeito: num(r.defeito), pen: {} });
     if (r.peneira && Number(r.percentual) > 0) { const x = e._am.get(a); x.pen[txt(r.peneira)] = (x.pen[txt(r.peneira)] || 0) + Number(r.percentual); }
   }
   for (const r of d.lotes) {
     const e = pegar(r);
     if (!e._lotes.has(r.linha)) {
       const defL = num(r.defeitoLote);
-      e._lotes.set(r.linha, { lote: txt(r.lote), guia: txt(r.guia), sacas: Number(r.volume) || 0, tipo: txt(r.tipo) || '(sem tipo)',
+      e._lotes.set(r.linha, { lote: txt(r.lote), guia: txt(r.guia), bebida: txt(r.bebida) || null, sacas: Number(r.volume) || 0, tipo: txt(r.tipo) || '(sem tipo)',
         defeito: defL > 0 ? defL : num(r.defeitoTipo), umidade: num(r.umidade), pen: {} });
     }
     if (r.peneira && Number(r.percentual) > 0) { const l = e._lotes.get(r.linha); l.pen[txt(r.peneira)] = (l.pen[txt(r.peneira)] || 0) + Number(r.percentual); }
@@ -96,7 +96,7 @@ function calcular(e, amostras, lotes, extra = {}) {
   const adP = aderencia(penA, penL), adT = aderencia(grA, grL);
   return {
     chave: e.chave, guia: e.guia, data: e.data, contrato: e.contrato, cliente: e.cliente, idEmpresa: e.idEmpresa || null,
-    amostras: amostras.map((a) => a.amostra).join(', '), sacas: r2(sacas), nLotes: lotes.length,
+    amostras: amostras.map((a) => (a.bebida ? `${a.amostra} (${a.bebida})` : a.amostra)).join(', '), sacas: r2(sacas), nLotes: lotes.length,
     defeitoAmostra: defA === null ? null : r2(defA), defeitoLotes: defL === null ? null : r2(defL),
     difDefeito: defA !== null && defL !== null ? r2(defL - defA) : null,
     umidadeLotes: volUm > 0 ? r2(somaUm / volUm) : null,
@@ -160,11 +160,11 @@ function detalheDe(e) {
   const { penA, penL, grA, grL, lotes, sacasTipo, amostras, porGuia } = e._det;
   const pens = ordenarPeneiras([...Object.keys(penA), ...Object.keys(penL)]);
   return {
-    amostrasDet: amostras.map((a) => ({ amostra: a.amostra, defeito: a.defeito, pct: Object.fromEntries(Object.entries(pct(a.pen)).map(([k, v]) => [k, r2(v)])) })),
+    amostrasDet: amostras.map((a) => ({ amostra: a.amostra, bebida: a.bebida, defeito: a.defeito, pct: Object.fromEntries(Object.entries(pct(a.pen)).map(([k, v]) => [k, r2(v)])) })),
     peneiras: pens.map((p) => ({ peneira: p, amostra: r2(penA[p] || 0), lotes: r2(penL[p] || 0), diferenca: r2((penL[p] || 0) - (penA[p] || 0)) })),
     grupos: ordemGrupos([...Object.keys(grA), ...Object.keys(grL)]).map((g) => ({ grupo: g, amostra: r2(grA[g] || 0), lotes: r2(grL[g] || 0), diferenca: r2((grL[g] || 0) - (grA[g] || 0)) })),
     tiposDet: Object.entries(sacasTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => ({ tipo: t, grupos: t === '(sem tipo)' ? 'fora da conta' : gruposTipo(t).join(' + '), sacas: r2(v) })),
-    lotes: lotes.map((l) => ({ lote: l.lote, guia: l.guia, sacas: r2(l.sacas), tipo: l.tipo, defeito: l.defeito, umidade: l.umidade, pct: l.pct })),
+    lotes: lotes.map((l) => ({ lote: l.lote, guia: l.guia, bebida: l.bebida, sacas: r2(l.sacas), tipo: l.tipo, defeito: l.defeito, umidade: l.umidade, pct: l.pct })),
     porGuia: porGuia || null,
   };
 }

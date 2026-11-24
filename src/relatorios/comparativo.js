@@ -79,13 +79,13 @@ function montarContratos({ amostras, entradas }) {
 
   for (const r of amostras) {
     const c = pegar(r);
-    if (!c._amostras.has(r.amostra)) c._amostras.set(r.amostra, { amostra: r.amostra, data: r.dataAmostra, pen: {} });
+    if (!c._amostras.has(r.amostra)) c._amostras.set(r.amostra, { amostra: r.amostra, data: r.dataAmostra, bebida: r.bebida || null, pen: {} });
     const a = c._amostras.get(r.amostra);
     a.pen[r.peneira] = (a.pen[r.peneira] || 0) + r.percentual;
   }
   for (const r of entradas) {
     const c = pegar(r);
-    if (!c._lotes.has(r.lote)) c._lotes.set(r.lote, { lote: r.lote, data: r.dataEntrada, volume: r.volume, armazem: r.armazem, pen: {} });
+    if (!c._lotes.has(r.lote)) c._lotes.set(r.lote, { lote: r.lote, data: r.dataEntrada, volume: r.volume, armazem: r.armazem, bebida: r.bebida || null, pen: {} });
     const l = c._lotes.get(r.lote);
     l.pen[r.peneira] = (l.pen[r.peneira] || 0) + r.percentual;
   }
@@ -94,7 +94,7 @@ function montarContratos({ amostras, entradas }) {
     // Amostra
     const amostrasLista = [...c._amostras.values()].map((a) => {
       const n = normalizar(a.pen);
-      return { amostra: a.amostra, data: a.data, somaOriginal: r2(n.total), pct: n.pct };
+      return { amostra: a.amostra, data: a.data, bebida: a.bebida, somaOriginal: r2(n.total), pct: n.pct };
     });
     const pa = {};
     for (const a of amostrasLista) for (const [p, v] of Object.entries(a.pct)) pa[p] = (pa[p] || 0) + v / amostrasLista.length;
@@ -102,7 +102,7 @@ function montarContratos({ amostras, entradas }) {
     // Entradas
     const lotesLista = [...c._lotes.values()].map((l) => {
       const n = normalizar(l.pen);
-      return { lote: l.lote, data: l.data, volume: l.volume, armazem: l.armazem, somaOriginal: r2(n.total), pct: n.pct };
+      return { lote: l.lote, data: l.data, volume: l.volume, armazem: l.armazem, bebida: l.bebida, somaOriginal: r2(n.total), pct: n.pct };
     }).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
     const sacas = {};
     let volume = 0;
@@ -164,7 +164,7 @@ function resumoContrato(c) {
     quantidade: r2(c.quantidade), volumeEntrado: r2(c.volumeEntrado),
     saldo: r2(c.quantidade - c.volumeEntrado),
     nLotes: c.lotes.length, nAmostras: c.amostras.length,
-    amostras: c.amostras.map((a) => a.amostra).join(', '),
+    amostras: c.amostras.map((a) => (a.bebida ? `${a.amostra} (${a.bebida})` : a.amostra)).join(', '),
     divergencia: c.divergencia === null ? null : r2(c.divergencia),
     aderencia: c.divergencia === null ? null : r2(100 - c.divergencia),
   };
@@ -213,7 +213,7 @@ function gerar(dados, f) {
         ...resumoContrato(c),
         peneiras: linhasPeneira(c.pctAmostra, c.pctEntrada, { quantidade: c.quantidade, sacas: c.sacasEntrada, volume: c.volumeEntrado }),
         lotes: c.lotes.map((l) => ({
-          lote: l.lote, data: l.data, volume: r2(l.volume), armazem: l.armazem, somaOriginal: l.somaOriginal,
+          lote: l.lote, data: l.data, volume: r2(l.volume), armazem: l.armazem, bebida: l.bebida, somaOriginal: l.somaOriginal,
           divergencia: c.temAmostra ? r2(divergencia(c.pctAmostra, l.pct)) : null,
           pct: Object.fromEntries(Object.entries(l.pct).map(([k, v]) => [k, r2(v)])),
         })),

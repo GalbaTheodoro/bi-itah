@@ -92,7 +92,7 @@ function gerar(d, f) {
         // custo do LOTE GR (por saca); sem custo no lote, usa o preço do contrato de compra
         const cIni = Number(lo.custoInicial) > 0 ? Number(lo.custoInicial) : precoContrato;
         const cTot = Number(lo.custoTotal) > 0 ? Number(lo.custoTotal) : cIni;
-        ag.set(k, { guia: o.guia, loteGR: lo.numero, data: dia(o.data), contrato: o.contrato, fornecedor: (o.fornecedor || '').trim(),
+        ag.set(k, { guia: o.guia, loteGR: lo.numero, bebidaGR: lo.bebida ? String(lo.bebida).trim() : null, data: dia(o.data), contrato: o.contrato, fornecedor: (o.fornecedor || '').trim(),
           custoInicial: cIni, custoTotal: cTot, doContrato: !(Number(lo.custoInicial) > 0), fr: 0 });
       }
       ag.get(k).fr += o.fr;
@@ -110,7 +110,7 @@ function gerar(d, f) {
     const precoVenda = precoOrig === null ? null : exporta ? (f.dolar > 0 ? precoOrig * f.dolar : null) : precoOrig;
     const lucroSaca = custoSaca !== null && precoVenda > 0 ? precoVenda - custoSaca : null;
     resultado.push({
-      id: v.id, guia: (v.guia || '').trim(), lote: lx.numero, contrato: (v.contrato || '').trim(), cliente, data, tipo: v.tipo ? v.tipo.trim() : null,
+      id: v.id, guia: (v.guia || '').trim(), lote: lx.numero, bebida: lx.bebida ? String(lx.bebida).trim() : null, contrato: (v.contrato || '').trim(), cliente, data, tipo: v.tipo ? v.tipo.trim() : null,
       moeda: exporta ? 'US$' : 'R$', precoContrato: precoOrig === null ? null : r2(precoOrig),
       sacas: r2(sacas), precoVenda: precoVenda === null ? null : r2(precoVenda),
       custoSaca: custoSaca === null ? null : r2(custoSaca),

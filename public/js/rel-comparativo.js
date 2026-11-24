@@ -165,11 +165,11 @@
       <div class="card"><h2>Aderência de cada lote</h2><p class="sub">Comparando a classificação do lote com a amostra do contrato</p>
         <div class="grafico ${det.lotes.length > 8 ? 'alto' : ''}"><canvas id="g-lotes"></canvas></div></div>
       <div class="card full"><h2>Lotes de entrada</h2>
-        <div class="tabela"><table><thead><tr><th>Lote</th><th>Data</th><th>Sacas</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}<th>Aderência</th></tr></thead>
+        <div class="tabela"><table><thead><tr><th>Lote</th><th class="esq">Bebida</th><th>Data</th><th>Sacas</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}<th>Aderência</th></tr></thead>
         <tbody>
-          <tr style="background:#eef3f9"><td><b>Amostra</b></td><td></td><td></td>${pens.map((p) => `<td><b>${fmt.pct(det.peneiras.find((x) => x.peneira === p).amostra)}</b></td>`).join('')}<td></td></tr>
+          <tr style="background:#eef3f9"><td><b>Amostra</b></td><td class="esq"><b>${esc([...new Set((det.amostrasDetalhe || []).map((a) => a.bebida).filter(Boolean))].join(', ') || '–')}</b></td><td></td><td></td>${pens.map((p) => `<td><b>${fmt.pct(det.peneiras.find((x) => x.peneira === p).amostra)}</b></td>`).join('')}<td></td></tr>
           ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}${l.somaOriginal !== 100 ? ` <span class="pill medio" title="Classificação original somava ${fmt.n(l.somaOriginal, 1)}% e foi ajustada para 100%">${fmt.n(l.somaOriginal)}%</span>` : ''}</td>
-          <td>${fmt.data(l.data)}</td><td>${fmt.n(l.volume, 1)}</td>${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}
+          <td class="esq">${esc(l.bebida || '–')}</td><td>${fmt.data(l.data)}</td><td>${fmt.n(l.volume, 1)}</td>${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}
           <td>${aderenciaPill(l.divergencia === null ? null : 100 - l.divergencia)}</td></tr>`).join('')}
         </tbody></table></div></div>` : ''}
     </div>`;

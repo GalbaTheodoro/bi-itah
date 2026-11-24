@@ -149,15 +149,15 @@
       <div class="card"><h2>Despejado por peneira</h2><div class="grafico"><canvas id="gs-g-det-pen"></canvas></div></div>
       <div class="card"><h2>Resultado por tipo de produto</h2>${tabelaTipos(det.tipos)}</div>
       <div class="card full"><h2>Lotes despejados</h2>
-        <div class="tabela"><table><thead><tr><th>Lote</th><th>Sacas</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
+        <div class="tabela"><table><thead><tr><th>Lote</th><th class="esq">Bebida</th><th>Sacas</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
         <tbody>
-          <tr style="background:#eef3f9"><td><b>Média ponderada</b></td><td><b>${fmt.n(det.volumeDespejado, 1)}</b></td>${det.peneiras.map((p) => `<td><b>${fmt.pct(p.pct)}</b></td>`).join('')}</tr>
+          <tr style="background:#eef3f9"><td><b>Média ponderada</b></td><td></td><td><b>${fmt.n(det.volumeDespejado, 1)}</b></td>${det.peneiras.map((p) => `<td><b>${fmt.pct(p.pct)}</b></td>`).join('')}</tr>
           ${det.lotesEntrada.map((l) => `<tr><td>${esc(l.lote)}${!l.classificado ? ' <span class="pill ruim">sem classificação</span>' : l.porTipo ? ` <span class="pill bom" title="Lote saiu de outra GS: entra na comparação pelo tipo de produto">tipo ${esc(l.porTipo)}</span>` : l.somaOriginal !== 100 ? ` <span class="pill medio" title="Classificação original somava ${fmt.n(l.somaOriginal, 1)}%">${fmt.n(l.somaOriginal)}%</span>` : ''}</td>
-            <td>${fmt.n(l.volume, 1)}</td>${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}</tr>`).join('')}
+            <td class="esq">${esc(l.bebida || '–')}</td><td>${fmt.n(l.volume, 1)}</td>${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}</tr>`).join('')}
         </tbody></table></div></div>
       <div class="card full"><h2>Lotes de resultado</h2>
-        <div class="tabela"><table><thead><tr><th>Lote</th><th class="esq">Tipo de produto</th><th class="esq">Grupo(s)</th><th>Sacas</th><th>Defeito</th></tr></thead>
-        <tbody>${det.lotesSaida.map((l) => `<tr><td>${esc(l.lote)}</td><td class="esq">${esc(l.tipo)}</td><td class="esq">${esc(l.grupos)}</td><td>${fmt.n(l.volume, 1)}</td><td>${l.defeito === undefined || l.defeito === null ? '–' : fmt.n(l.defeito)}</td></tr>`).join('')}</tbody></table></div></div>`;
+        <div class="tabela"><table><thead><tr><th>Lote</th><th class="esq">Bebida</th><th class="esq">Tipo de produto</th><th class="esq">Grupo(s)</th><th>Sacas</th><th>Defeito</th></tr></thead>
+        <tbody>${det.lotesSaida.map((l) => `<tr><td>${esc(l.lote)}</td><td class="esq">${esc(l.bebida || '–')}</td><td class="esq">${esc(l.tipo)}</td><td class="esq">${esc(l.grupos)}</td><td>${fmt.n(l.volume, 1)}</td><td>${l.defeito === undefined || l.defeito === null ? '–' : fmt.n(l.defeito)}</td></tr>`).join('')}</tbody></table></div></div>`;
   }
 
   function abaTipos(d) {

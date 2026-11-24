@@ -46,9 +46,9 @@ function contratosPorAmostra(linhas, campoParte) {
   const m = new Map();
   for (const r of linhas) {
     if (!r.peneira || !(r.percentual > 0)) continue;
-    if (!m.has(r.contrato)) m.set(r.contrato, { contrato: r.contrato, parte: r[campoParte], data: r.dataContrato, quantidade: r.quantidade, amostras: new Map() });
+    if (!m.has(r.contrato)) m.set(r.contrato, { contrato: r.contrato, parte: r[campoParte], data: r.dataContrato, quantidade: r.quantidade, amostras: new Map(), bebidas: new Map() });
     const c = m.get(r.contrato);
-    if (!c.amostras.has(r.amostra)) c.amostras.set(r.amostra, {});
+    if (!c.amostras.has(r.amostra)) { c.amostras.set(r.amostra, {}); c.bebidas.set(r.amostra, r.bebida || null); }
     const a = c.amostras.get(r.amostra);
     a[r.peneira] = (a[r.peneira] || 0) + r.percentual;
   }
@@ -61,7 +61,7 @@ function contratosPorAmostra(linhas, campoParte) {
     }
     const sacas = {};
     for (const [p, v] of Object.entries(pct)) sacas[p] = (c.quantidade * v) / 100;
-    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, amostras: [...c.amostras.keys()].join(', '), sacas };
+    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, amostras: [...c.amostras.keys()].map((a) => (c.bebidas.get(a) ? `${a} (${c.bebidas.get(a)})` : a)).join(', '), sacas };
   });
 }
 
