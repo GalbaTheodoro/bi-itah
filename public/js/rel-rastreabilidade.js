@@ -199,6 +199,7 @@
           ${mostraIda ? kpi('Embarcado', n2(lote.TotalEmbarcado || 0)) + kpi('Em estoque (todos os lotes)', n2(lote.TotalEmEstoque || 0)) + (Number(lote.TotalEmServico || 0) > 0 ? kpi('Em serviço sem resultado', n2(lote.TotalEmServico)) : '') : ''}
           ${mostraOrigem ? kpi('Origem em guias de entrada', n2(lote.TotalOrigemEntradas || 0)) + kpi('GR de entrada', fmt.n((origem || []).length)) + kpi('Produtores', fmt.n(new Set((origem || []).map((o) => o.IDDomicilio ?? o.Produtor)).size)) : ''}
         </div>
+        ${estado.dados.avisoProdutor ? `<div class="aviso">${esc(estado.dados.avisoProdutor)}</div>` : ''}
         ${estado.dados.avisoInfo ? `<div class="aviso">${esc(estado.dados.avisoInfo)}</div>` : ''}
         ${estado.dados.avisoContrato ? `<div class="aviso">${esc(estado.dados.avisoContrato)}</div>` : ''}
         ${lote.Truncado ? '<div class="aviso">O caminho deste lote é muito grande e o relatório foi cortado. Os totais podem estar incompletos.</div>' : ''}
