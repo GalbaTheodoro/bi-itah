@@ -19,6 +19,7 @@ const RELATORIOS = [
   { id: 'lucro', titulo: 'Lucro por lote', api: '/api/lucro', grupo: 'Comercial', icone: '💰' },
   { id: 'embarque', titulo: 'Amostra vendida × Embarque', api: '/api/embarque', grupo: 'Logística', icone: '🚢' },
   { id: 'estoque', titulo: 'Estoque', api: '/api/estoque', grupo: 'Logística', icone: '📦' },
+  { id: 'rastreabilidade', titulo: 'Rastreabilidade de lote', api: '/api/rastreabilidade', grupo: 'Logística', icone: '🧭' },
 ];
 const IDS = RELATORIOS.map((r) => r.id);
 

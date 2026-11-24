@@ -13,6 +13,7 @@ const relCV = require('./src/relatorios/compravenda');
 const relLucro = require('./src/relatorios/lucro');
 const relEmb = require('./src/relatorios/embarque');
 const relEst = require('./src/relatorios/estoque');
+const relRastro = require('./src/relatorios/rastreabilidade');
 const empresa = require('./src/empresa');
 
 const DEMO = process.argv.includes('--demo') || process.env.DEMO === '1';
@@ -278,6 +279,32 @@ app.get('/api/estoque', async (req, res, next) => {
     f.cruzarColunas = req.query.colunas || null;
     res.json({ ...relEst.gerar(d, f), opcoes: relEst.opcoes(d), filtros: f, atualizadoEm: d.atualizadoEm, msBanco: d.msBanco });
   } catch (e) { next(e); }
+});
+
+// ----- Relatório 7: Rastreabilidade de lote (mesma do WMS Node) -----
+app.get('/api/rastreabilidade/lotes', async (req, res, next) => {
+  try {
+    if (DEMO) return res.json([]);
+    res.json(await relRastro.buscarLotes(db, req.query.q));
+  } catch (e) { next(e); }
+});
+app.get('/api/rastreabilidade', async (req, res, next) => {
+  try {
+    if (DEMO) return res.status(400).json({ erro: 'Este relatório precisa do banco (use o iniciar.bat).' });
+    const idLote = Number(req.query.idlote) > 0 ? Number(req.query.idlote) : null;
+    const numero = String(req.query.numero || '').trim() || null;
+    if (!idLote && !numero) return res.status(400).json({ erro: 'Escolha o lote.' });
+    // O = só o resumo de origem: para o banco é a volta
+    const pedido = String(req.query.sentido || 'A').toUpperCase();
+    const sentido = pedido === 'O' ? 'V' : (['I', 'V', 'A'].includes(pedido) ? pedido : 'A');
+    const r = await relRastro.rastrear(db, { idLote, numero, sentido });
+    if (!r.lote) return res.status(404).json({ erro: 'Lote não encontrado.' });
+    res.json(r);
+  } catch (e) {
+    // erros levantados pela própria procedure (RAISERROR 16): lote não encontrado, número repetido...
+    if (e.number === 50000) return res.status(400).json({ erro: e.message });
+    next(e);
+  }
 });
 
 // ----- Dados da empresa (cabeçalho do PDF): ?ids=1,2 -> empresas do relatório; sem ids -> empresa padrão
