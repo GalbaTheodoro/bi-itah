@@ -110,7 +110,7 @@ async function colocarInfoLotes(db, res) {
   }
 }
 
-// Contrato de cada GR (guia de entrada): tb_gc_entra.idcontratocompra; se vazio ou -1, o IDContrato da guia (tb_gci).
+// Contrato de cada GR (guia de entrada): tb_gc_entra.idcontratocompra; se vazio ou -1, o idcontratocompra da guia (tb_gci).
 // Cada desdobra (linha da tb_gc_entra) pode ter o seu contrato: a ligação é pela guia + lote.
 async function colocarContratos(db, res) {
   const ehGR = (l) => l.Movimento === 'ENTRADA';
@@ -124,7 +124,7 @@ async function colocarContratos(db, res) {
       FROM tb_gc_entra e
      INNER JOIN tb_gci g          ON g.id = e.IDGCI
       LEFT JOIN tb_lote l         ON l.id = e.IDLote
-      LEFT JOIN tb_contrato_cv c  ON c.id = CASE WHEN e.idcontratocompra IS NULL OR e.idcontratocompra = -1 THEN g.IDContrato ELSE e.idcontratocompra END
+      LEFT JOIN tb_contrato_cv c  ON c.id = CASE WHEN e.idcontratocompra IS NULL OR e.idcontratocompra = -1 THEN g.idcontratocompra ELSE e.idcontratocompra END
      WHERE e.IDGCI IN (${[...ids].join(',')})`);
 
   const porLoteId = new Map(), porLoteNum = new Map(), porGuia = new Map();
