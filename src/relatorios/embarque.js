@@ -7,6 +7,7 @@ const { idsEmpresa } = require('../empresa');
 //  - Defeito: defeito da amostra × defeito médio dos lotes (ponderado pelas sacas).
 //  Aderência = 100 − metade da soma das diferenças absolutas (% do embarque dentro do padrão da amostra).
 const { grupoPeneira, gruposTipo, ordemGrupos } = require('./gs');
+const beb = require('./bebida');
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const dia = (v) => (!v ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
@@ -94,6 +95,12 @@ function calcular(e, amostras, lotes, extra = {}) {
 
   const defL = volDef > 0 ? somaDef / volDef : null;
   const adP = aderencia(penA, penL), adT = aderencia(grA, grL);
+  // Bebida: amostra(s) do contrato × lotes embarcados (pelas sacas)
+  const fracBebA = beb.fracAmostras(amostras);
+  const bebL = beb.sacasLotes(lotes, 'sacas');
+  const cmpBeb = beb.comparar(fracBebA, bebL.sacas, { escalarA: true });
+  const bebA = Object.keys(fracBebA);
+  for (const l of lotes) l.bebidaConfere = bebA.length && l.bebida ? bebA.includes(l.bebida) : null;
   return {
     chave: e.chave, guia: e.guia, data: e.data, contrato: e.contrato, cliente: e.cliente, idEmpresa: e.idEmpresa || null,
     amostras: amostras.map((a) => (a.bebida ? `${a.amostra} (${a.bebida})` : a.amostra)).join(', '), sacas: r2(sacas), nLotes: lotes.length,
@@ -101,9 +108,11 @@ function calcular(e, amostras, lotes, extra = {}) {
     difDefeito: defA !== null && defL !== null ? r2(defL - defA) : null,
     umidadeLotes: volUm > 0 ? r2(somaUm / volUm) : null,
     aderenciaPeneira: adP === null ? null : r2(adP), aderenciaTipo: adT === null ? null : r2(adT),
+    aderenciaBebida: cmpBeb.aderencia, semBebida: r2(bebL.sem),
+    bebidasLotes: Object.entries(bebL.sacas).sort((a, b) => b[1] - a[1]).map(([x, v]) => `${x} (${r2(v)})`).join(', '),
     tipos: Object.entries(sacasTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => `${t} (${r2(v)})`).join(', '),
     ...extra,
-    _det: { penA, penL, grA, grL, lotes, sacasTipo, amostras },
+    _det: { penA, penL, grA, grL, lotes, sacasTipo, amostras, bebidas: cmpBeb.linhas, fracBebA, sacasBebL: bebL.sacas },
   };
 }
 
@@ -130,7 +139,7 @@ function consolidar(guias) {
   );
   // comparação guia a guia (para o gráfico e a tabela do consolidado)
   c._det.porGuia = ord.map((g) => ({ chave: g.chave, guia: g.guia, data: g.data, sacas: g.sacas, nLotes: g.nLotes,
-    aderenciaPeneira: g.aderenciaPeneira, aderenciaTipo: g.aderenciaTipo, defeitoLotes: g.defeitoLotes, difDefeito: g.difDefeito, umidadeLotes: g.umidadeLotes }));
+    aderenciaPeneira: g.aderenciaPeneira, aderenciaTipo: g.aderenciaTipo, aderenciaBebida: g.aderenciaBebida, defeitoLotes: g.defeitoLotes, difDefeito: g.difDefeito, umidadeLotes: g.umidadeLotes }));
   return c;
 }
 
@@ -157,14 +166,15 @@ function filtrar(d, f) {
 }
 
 function detalheDe(e) {
-  const { penA, penL, grA, grL, lotes, sacasTipo, amostras, porGuia } = e._det;
+  const { penA, penL, grA, grL, lotes, sacasTipo, amostras, porGuia, bebidas } = e._det;
   const pens = ordenarPeneiras([...Object.keys(penA), ...Object.keys(penL)]);
   return {
     amostrasDet: amostras.map((a) => ({ amostra: a.amostra, bebida: a.bebida, defeito: a.defeito, pct: Object.fromEntries(Object.entries(pct(a.pen)).map(([k, v]) => [k, r2(v)])) })),
     peneiras: pens.map((p) => ({ peneira: p, amostra: r2(penA[p] || 0), lotes: r2(penL[p] || 0), diferenca: r2((penL[p] || 0) - (penA[p] || 0)) })),
     grupos: ordemGrupos([...Object.keys(grA), ...Object.keys(grL)]).map((g) => ({ grupo: g, amostra: r2(grA[g] || 0), lotes: r2(grL[g] || 0), diferenca: r2((grL[g] || 0) - (grA[g] || 0)) })),
     tiposDet: Object.entries(sacasTipo).sort((a, b) => b[1] - a[1]).map(([t, v]) => ({ tipo: t, grupos: t === '(sem tipo)' ? 'fora da conta' : gruposTipo(t).join(' + '), sacas: r2(v) })),
-    lotes: lotes.map((l) => ({ lote: l.lote, guia: l.guia, bebida: l.bebida, sacas: r2(l.sacas), tipo: l.tipo, defeito: l.defeito, umidade: l.umidade, pct: l.pct })),
+    lotes: lotes.map((l) => ({ lote: l.lote, guia: l.guia, bebida: l.bebida, bebidaConfere: l.bebidaConfere, sacas: r2(l.sacas), tipo: l.tipo, defeito: l.defeito, umidade: l.umidade, pct: l.pct })),
+    bebidas,
     porGuia: porGuia || null,
   };
 }
@@ -182,6 +192,17 @@ function gerar(d, f) {
   const comAmostra = lista.filter((e) => e.aderenciaPeneira !== null || e.aderenciaTipo !== null || e.defeitoAmostra !== null);
   const pond = (k) => { let s = 0, v = 0; for (const e of lista) if (e[k] !== null) { s += e[k] * e.sacas; v += e.sacas; } return v ? r2(s / v) : null; };
   const b = base(d);
+  // Bebida geral: sacas esperadas pela amostra de cada embarque × sacas embarcadas de cada bebida
+  const bA = {}, bL = {};
+  let semBeb = 0;
+  for (const e of lista) {
+    semBeb += e.semBebida || 0;
+    if (!Object.keys(e._det.fracBebA).length) continue; // amostra sem bebida: fora da comparação
+    const tl = beb.total(e._det.sacasBebL);
+    beb.somarEm(bA, e._det.fracBebA, tl);
+    beb.somarEm(bL, e._det.sacasBebL);
+  }
+  const bebGeral = beb.comparar(bA, bL, { escalarA: true });
   // a lista vai sem os detalhes (lotes, peneiras): o detalhe de cada guia vem em /api/embarque/detalhe
   return {
     kpis: {
@@ -189,7 +210,10 @@ function gerar(d, f) {
       aderenciaPeneira: pond('aderenciaPeneira'), aderenciaTipo: pond('aderenciaTipo'),
       defeitoAmostra: pond('defeitoAmostra'), defeitoLotes: pond('defeitoLotes'),
       acimaDefeito: lista.filter((x) => x.difDefeito > 0).length,
+      aderenciaBebida: bebGeral.aderencia, semBebida: r2(semBeb),
+      bebidaDiferente: lista.filter((x) => x.aderenciaBebida !== null && x.aderenciaBebida < 100).length,
     },
+    bebidas: bebGeral.linhas,
     embarques: [...consolidados, ...lista].map(({ _det, ...x }) => x),
     consolidados: consolidados.map((x) => x.chave),
     empresas: idsEmpresa(lista),

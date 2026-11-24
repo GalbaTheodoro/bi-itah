@@ -9,6 +9,7 @@ const { idsEmpresa } = require('../empresa');
 
 const r2 = (n) => Math.round(n * 100) / 100;
 const { grupoPeneira, gruposTipo, ordemGrupos } = require('./gs');
+const beb = require('./bebida');
 
 // Lotes vendidos -> por contrato, sacas por TIPO DE PRODUTO do lote
 function contratosPorTipo(linhas) {
@@ -16,13 +17,14 @@ function contratosPorTipo(linhas) {
   for (const r of linhas) {
     if (!m.has(r.contrato)) m.set(r.contrato, { contrato: r.contrato, parte: r.cliente, data: r.dataContrato, quantidade: r.quantidade, lotes: new Map() });
     const c = m.get(r.contrato);
-    if (!c.lotes.has(r.lote)) c.lotes.set(r.lote, { volume: r.volume, tipo: r.tipo || '(sem tipo)' });
+    if (!c.lotes.has(r.lote)) c.lotes.set(r.lote, { volume: r.volume, tipo: r.tipo || '(sem tipo)', bebida: r.bebida || null });
   }
   return [...m.values()].map((c) => {
     const tipos = {};
     let volume = 0;
     for (const l of c.lotes.values()) { volume += l.volume; tipos[l.tipo] = (tipos[l.tipo] || 0) + l.volume; }
-    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, volume, nLotes: c.lotes.size, tipos, semClassificacao: tipos['(sem tipo)'] || 0 };
+    const bl = beb.sacasLotes([...c.lotes.values()], 'volume');
+    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, volume, nLotes: c.lotes.size, tipos, semClassificacao: tipos['(sem tipo)'] || 0, bebidas: bl.sacas, semBebida: bl.sem };
   });
 }
 
@@ -61,7 +63,10 @@ function contratosPorAmostra(linhas, campoParte) {
     }
     const sacas = {};
     for (const [p, v] of Object.entries(pct)) sacas[p] = (c.quantidade * v) / 100;
-    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, amostras: [...c.amostras.keys()].map((a) => (c.bebidas.get(a) ? `${a} (${c.bebidas.get(a)})` : a)).join(', '), sacas };
+    const fr = beb.fracAmostras([...c.bebidas.values()].map((b) => ({ bebida: b })));
+    const bebidas = beb.somarEm({}, fr, c.quantidade);
+    const semBebida = Object.keys(fr).length ? 0 : c.quantidade;
+    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, bebidas, semBebida, amostras: [...c.amostras.keys()].map((a) => (c.bebidas.get(a) ? `${a} (${c.bebidas.get(a)})` : a)).join(', '), sacas };
   });
 }
 
@@ -71,7 +76,7 @@ function contratosPorLotes(linhas, campoParte, campoData) {
   for (const r of linhas) {
     if (!m.has(r.contrato)) m.set(r.contrato, { contrato: r.contrato, parte: r[campoParte], data: r.dataContrato, quantidade: r.quantidade, lotes: new Map() });
     const c = m.get(r.contrato);
-    if (!c.lotes.has(r.lote)) c.lotes.set(r.lote, { volume: r.volume, data: r[campoData], pen: {} });
+    if (!c.lotes.has(r.lote)) c.lotes.set(r.lote, { volume: r.volume, data: r[campoData], bebida: r.bebida || null, pen: {} });
     if (r.peneira && r.percentual > 0) { const l = c.lotes.get(r.lote); l.pen[r.peneira] = (l.pen[r.peneira] || 0) + r.percentual; }
   }
   return [...m.values()].map((c) => {
@@ -83,7 +88,8 @@ function contratosPorLotes(linhas, campoParte, campoData) {
       if (!tot) { semClass += l.volume; continue; }
       for (const [p, v] of Object.entries(l.pen)) sacas[p] = (sacas[p] || 0) + (l.volume * v) / tot;
     }
-    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, volume, semClassificacao: semClass, nLotes: c.lotes.size, sacas };
+    const bl = beb.sacasLotes([...c.lotes.values()], 'volume');
+    return { contrato: c.contrato, parte: c.parte, data: c.data, quantidade: c.quantidade, volume, semClassificacao: semClass, nLotes: c.lotes.size, sacas, bebidas: bl.sacas, semBebida: bl.sem };
   });
 }
 
@@ -144,6 +150,13 @@ function gerar(compras, vendas, f) {
     ordenar = ordemGrupos;
   }
 
+  // Bebida: comprado × vendido (sacas de cada bebida, na mesma base escolhida)
+  const bC = {}, bV = {};
+  for (const c of comp) beb.somarEm(bC, c.bebidas);
+  for (const c of vend) beb.somarEm(bV, c.bebidas);
+  const cmpBeb = beb.comparar(bC, bV);
+  const bebidas = cmpBeb.linhas.map((l) => ({ bebida: l.bebida, comprado: l.sacasA, pctComprado: l.pctA, vendido: l.sacasB, pctVendido: l.pctB, saldo: r2(l.sacasA - l.sacasB), diferenca: l.diferenca }));
+
   const sc = somar(comp), sv = somar(vend);
   const totC = Object.values(sc).reduce((a, b) => a + b, 0);
   const totV = Object.values(sv).reduce((a, b) => a + b, 0);
@@ -190,6 +203,7 @@ function gerar(compras, vendas, f) {
     volume: c.volume === undefined ? null : r2(c.volume), nLotes: c.nLotes ?? null, amostras: c.amostras ?? null,
     tipos: c.tipos ? Object.entries(c.tipos).map(([t, v]) => `${t}: ${r2(v)}`).join(' · ') : null,
     semClassificacao: c.semClassificacao ? r2(c.semClassificacao) : 0,
+    bebidas: Object.entries(c.bebidas || {}).sort((a, b) => b[1] - a[1]).map(([x, v]) => `${x}: ${r2(v)}`).join(' · ') || null,
     total: r2(Object.values(c.sacas).reduce((a, b) => a + b, 0)),
     sacas: Object.fromEntries(Object.entries(c.sacas).map(([p, v]) => [p, r2(v)])),
   })).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
@@ -205,7 +219,11 @@ function gerar(compras, vendas, f) {
       comprado: r2(totC), vendido: r2(totV), saldo: r2(totC - totV),
       semClassCompra: r2(comp.reduce((s, c) => s + (c.semClassificacao || 0), 0)),
       semClassVenda: r2(vend.reduce((s, c) => s + (c.semClassificacao || 0), 0)),
+      semBebidaCompra: r2(comp.reduce((s, c) => s + (c.semBebida || 0), 0)),
+      semBebidaVenda: r2(vend.reduce((s, c) => s + (c.semBebida || 0), 0)),
+      aderenciaBebida: cmpBeb.aderencia,
     },
+    bebidas,
     peneiras,
     tiposVendidos,
     porGrupo: f.vendaPor === 'tipo',

@@ -1,4 +1,5 @@
 const { idsEmpresa } = require('../empresa');
+const beb = require('./bebida');
 // Relatório 1: Classificação da AMOSTRA de compra x classificação dos LOTES que entraram.
 //
 // Regras de cálculo:
@@ -122,6 +123,13 @@ function montarContratos({ amostras, entradas }) {
     c.temAmostra = amostrasLista.length > 0;
     c.temEntrada = lotesLista.length > 0;
     c.divergencia = c.temAmostra && c.temEntrada ? divergencia(pa, pe) : null;
+    // Bebida: amostra (média das amostras) × lotes (pelo volume)
+    c.fracBebidaA = beb.fracAmostras(amostrasLista);
+    const bl = beb.sacasLotes(lotesLista, 'volume');
+    c.sacasBebidaE = bl.sacas;
+    c.semBebidaE = bl.sem;
+    c.bebidasAmostra = Object.keys(c.fracBebidaA);
+    c.bebida = beb.comparar(c.fracBebidaA, c.sacasBebidaE, { escalarA: true });
     delete c._amostras; delete c._lotes;
   }
   return [...contratos.values()];
@@ -155,7 +163,17 @@ function agregar(lista) {
   const pctA = {}, pctE = {};
   if (qtd > 0) for (const [p, v] of Object.entries(pa)) pctA[p] = v / qtd;
   if (vol > 0) for (const [p, s] of Object.entries(sacas)) pctE[p] = (s / vol) * 100;
-  return { quantidade: qtd, volume: vol, pctA, pctE, sacas };
+  // bebida: amostra ponderada pela quantidade contratada, entrada pelas sacas de cada bebida
+  const bA = {}, bE = {};
+  let semE = 0;
+  for (const c of lista) {
+    if (!c.bebidasAmostra.length) continue; // amostra sem bebida: contrato fica fora da comparação de bebida
+    beb.somarEm(bA, c.fracBebidaA, c.quantidade || 1);
+    beb.somarEm(bE, c.sacasBebidaE);
+    semE += c.semBebidaE || 0;
+  }
+  const bebida = beb.comparar(bA, bE, { escalarA: true });
+  return { quantidade: qtd, volume: vol, pctA, pctE, sacas, bebida, semBebida: semE };
 }
 
 function resumoContrato(c) {
@@ -167,6 +185,8 @@ function resumoContrato(c) {
     amostras: c.amostras.map((a) => (a.bebida ? `${a.amostra} (${a.bebida})` : a.amostra)).join(', '),
     divergencia: c.divergencia === null ? null : r2(c.divergencia),
     aderencia: c.divergencia === null ? null : r2(100 - c.divergencia),
+    aderenciaBebida: c.bebida.aderencia,
+    bebidasAmostra: c.bebidasAmostra.join(', '),
   };
 }
 
@@ -201,6 +221,7 @@ function gerar(dados, f) {
       quantidade: r2(a.quantidade), volumeEntrado: r2(a.volume),
       divergencia: div === null ? null : r2(div), aderencia: div === null ? null : r2(100 - div),
       peneiras: linhasPeneira(a.pctA, a.pctE, { sacas: a.sacas, volume: a.volume }),
+      aderenciaBebida: a.bebida.aderencia, bebidas: a.bebida.linhas, semBebida: r2(a.semBebida),
     };
   }).sort((x, y) => y.volumeEntrado - x.volumeEntrado);
 
@@ -212,8 +233,10 @@ function gerar(dados, f) {
       detalhe = {
         ...resumoContrato(c),
         peneiras: linhasPeneira(c.pctAmostra, c.pctEntrada, { quantidade: c.quantidade, sacas: c.sacasEntrada, volume: c.volumeEntrado }),
+        bebidas: c.bebida.linhas, semBebida: r2(c.semBebidaE),
         lotes: c.lotes.map((l) => ({
           lote: l.lote, data: l.data, volume: r2(l.volume), armazem: l.armazem, bebida: l.bebida, somaOriginal: l.somaOriginal,
+          bebidaConfere: c.bebidasAmostra.length && l.bebida ? c.bebidasAmostra.includes(l.bebida) : null,
           divergencia: c.temAmostra ? r2(divergencia(c.pctAmostra, l.pct)) : null,
           pct: Object.fromEntries(Object.entries(l.pct).map(([k, v]) => [k, r2(v)])),
         })),
@@ -236,8 +259,11 @@ function gerar(dados, f) {
       volumeEntrado: r2(g.volume),
       divergencia: divGeral === null ? null : r2(divGeral),
       aderencia: divGeral === null ? null : r2(100 - divGeral),
+      aderenciaBebida: g.bebida.aderencia,
+      semBebida: r2(g.semBebida),
     },
     geral: linhasPeneira(g.pctA, g.pctE, { sacas: g.sacas, volume: g.volume }),
+    bebidas: g.bebida.linhas,
     fornecedores,
     contratos: contratos.map(resumoContrato).sort((a, b) => (b.dataContrato || '').localeCompare(a.dataContrato || '')),
     detalhe,

@@ -1,6 +1,6 @@
 // Relatório: Comprado × Vendido por peneira
 (() => {
-  const { api, fmt, esc, grafico, cor } = BI;
+  const { api, fmt, esc, grafico, cor, tabelaBebida, graficoBebida } = BI;
   const estado = { aba: 'peneira', filtros: { base: 'contratado', vendaPor: 'peneira' }, peneiraMes: '', busca: '', lado: '', dados: null };
 
   async function carregar(atualizar = false) {
@@ -80,6 +80,24 @@
       </div>` : '<div class="card vazio">Nada encontrado nesse filtro.</div>'}`;
   }
 
+  // Comprado × Vendido por BEBIDA (tb_classificacao)
+  const linhasBeb = (d) => (d.bebidas || []).map((l) => ({ bebida: l.bebida, pctA: l.pctComprado, pctB: l.pctVendido, diferenca: l.diferenca, sacasA: l.comprado, sacasB: l.vendido }));
+  function abaBebida(d) {
+    const k = d.kpis, fis = estado.filtros.base === 'fisico', tipo = d.porGrupo;
+    const origem = fis ? 'bebida de cada lote (compra: lotes recebidos · venda: lotes vinculados)' : 'quantidade do contrato × bebida da amostra do contrato';
+    return `
+      <div class="kpis">
+        <div class="kpi"><div class="t">Aderência bebida</div><div class="v">${k.aderenciaBebida === null ? '–' : fmt.pct(k.aderenciaBebida)}</div><div class="d">perfil de bebida comprado × vendido</div></div>
+        <div class="kpi"><div class="t">Sem bebida</div><div class="v">${fmt.n(k.semBebidaCompra)} / ${fmt.n(k.semBebidaVenda)}</div><div class="d">sacas compra / venda (fora da conta)</div></div>
+      </div>
+      <div class="grade">
+        <div class="card"><h2>Comprado × Vendido por bebida</h2><p class="sub">% de cada bebida · ${origem}${tipo ? ' · venda pelos lotes vendidos' : ''}</p><div class="grafico"><canvas id="cv-g-beb"></canvas></div></div>
+        <div class="card"><h2>Saldo por bebida</h2><p class="sub">Verde: comprou mais do que vendeu · Vermelho: vendeu mais do que comprou</p><div class="grafico"><canvas id="cv-g-beb-saldo"></canvas></div></div>
+        <div class="card full"><h2>Detalhe por bebida</h2>${tabelaBebida(linhasBeb(d), '% compra', '% venda', { sacasA: 'Comprado', sacasB: 'Vendido', saldo: 'Saldo', saldoAB: true })}
+          <div class="legenda-calc">Saldo = comprado − vendido. ${fis ? 'Lotes sem bebida ficam fora da conta.' : 'Contratos cuja amostra não tem bebida ficam fora da conta. Mais de uma amostra no contrato: a quantidade é dividida igualmente entre elas.'}</div></div>
+      </div>`;
+  }
+
   function abaMes(d) {
     const pens = d.peneiras.map((p) => p.peneira);
     return `<div class="grade">
@@ -118,9 +136,9 @@
     return `<div class="card"><h2>Contratos</h2><p class="sub">${fmt.n(lista.length)} contratos · sacas por ${d.porGrupo ? 'grupo' : 'peneira'}</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><input class="busca" id="cv-busca" style="flex:1;min-width:180px;margin:0" placeholder="Buscar contrato, fornecedor ou cliente" value="${esc(estado.busca)}">
       <select id="cv-lado" class="busca" style="width:auto;margin:0"><option value="">Compra e venda</option><option ${estado.lado === 'Compra' ? 'selected' : ''}>Compra</option><option ${estado.lado === 'Venda' ? 'selected' : ''}>Venda</option></select></div>
-      <div class="tabela lista-contratos"><table><thead><tr><th>Tipo</th><th>Contrato</th><th class="esq">Fornecedor / cliente</th><th>Data</th><th>Qtde</th>${fis ? '<th>Lotes</th><th>Sacas lotes</th>' : '<th class="esq">Amostra</th>'}${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
+      <div class="tabela lista-contratos"><table><thead><tr><th>Tipo</th><th>Contrato</th><th class="esq">Fornecedor / cliente</th><th>Data</th><th>Qtde</th>${fis ? '<th>Lotes</th><th>Sacas lotes</th>' : '<th class="esq">Amostra</th>'}<th class="esq">Bebida (sacas)</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
       <tbody>${lista.map((c) => `<tr><td><span class="pill ${c.lado === 'Compra' ? 'bom' : 'medio'}">${c.lado}</span></td><td>${esc(c.contrato)}</td><td class="esq">${esc(c.parte)}</td><td>${fmt.data(c.data)}</td><td>${fmt.n(c.quantidade)}</td>
-        ${fis ? `<td>${c.nLotes ?? '–'}</td><td>${fmt.n(c.volume, 1)}${c.semClassificacao ? ` <span class="pill ruim" title="sacas sem classificação">${fmt.n(c.semClassificacao)} s/ class.</span>` : ''}</td>` : `<td class="esq" title="${esc(c.tipos || '')}">${esc(c.amostras || (c.tipos ? 'lotes: ' + c.tipos : ''))}</td>`}
+        ${fis ? `<td>${c.nLotes ?? '–'}</td><td>${fmt.n(c.volume, 1)}${c.semClassificacao ? ` <span class="pill ruim" title="sacas sem classificação">${fmt.n(c.semClassificacao)} s/ class.</span>` : ''}</td>` : `<td class="esq" title="${esc(c.tipos || '')}">${esc(c.amostras || (c.tipos ? 'lotes: ' + c.tipos : ''))}</td>`}<td class="esq">${esc(c.bebidas || '–')}</td>
         ${pens.map((p) => `<td>${c.sacas[p] ? fmt.n(c.sacas[p], 1) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>`;
   }
 
@@ -134,6 +152,11 @@
         gSaldo('cv-g-saldo', d.peneiras);
         gPctMix('cv-g-mix', d.peneiras);
       }
+    } else if (estado.aba === 'bebida') {
+      area.innerHTML = abaBebida(d);
+      const lb = linhasBeb(d);
+      graficoBebida('cv-g-beb', lb, 'Comprado', 'Vendido');
+      if (lb.length) gSaldo('cv-g-beb-saldo', d.bebidas.map((l) => ({ ...l, peneira: l.bebida })));
     } else if (estado.aba === 'mes') {
       area.innerHTML = abaMes(d);
       const s = serieMes(d);
@@ -163,7 +186,7 @@
         <div style="display:flex;gap:6px"><button class="btn" type="submit">Aplicar</button><button class="btn sec" type="button" id="cv-atualizar" title="Buscar dados novos no banco">↻</button></div>
       </form>
       <div class="abas" id="cv-abas">
-        <button data-aba="peneira">Por peneira</button><button data-aba="mes">Por mês</button>
+        <button data-aba="peneira">Por peneira</button><button data-aba="bebida">Por bebida</button><button data-aba="mes">Por mês</button>
         <button data-aba="partes">Fornecedores × Clientes</button><button data-aba="contratos">Contratos</button>
       </div>
       <div id="cv-area"></div>`;

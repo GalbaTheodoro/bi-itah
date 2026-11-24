@@ -43,6 +43,38 @@ window.BI = (() => {
   }
   function difClasse(v, lim = 0.05) { return v > lim ? 'pos' : v < -lim ? 'neg' : ''; }
 
+  // ---------- Bebida: comparação entre dois lados (amostra × lotes, comprado × vendido) ----------
+  // linhas: [{ bebida, pctA, pctB, diferenca, sacasA, sacasB }]
+  function tabelaBebida(linhas, rotA, rotB, { sacasA = 'Sacas esperadas*', sacasB = 'Sacas ' + rotB.toLowerCase(), saldo = 'Dif. sacas', saldoAB = false } = {}) {
+    if (!linhas || !linhas.length) return '<div class="card vazio" style="box-shadow:none">Sem bebida cadastrada nos lotes/amostras desse filtro.</div>';
+    const tA = linhas.reduce((s, l) => s + (l.sacasA || 0), 0), tB = linhas.reduce((s, l) => s + (l.sacasB || 0), 0);
+    const dif = (l) => (saldoAB ? l.sacasA - l.sacasB : l.sacasB - l.sacasA);
+    return `<div class="tabela"><table><thead><tr><th class="esq">Bebida</th><th>${esc(rotA)}</th><th>${esc(rotB)}</th><th>Diferença</th><th>${esc(sacasA)}</th><th>${esc(sacasB)}</th><th>${esc(saldo)}</th></tr></thead>
+      <tbody>${linhas.map((l) => `<tr><td class="esq">${esc(l.bebida)}</td><td>${fmt.pct(l.pctA)}</td><td>${fmt.pct(l.pctB)}</td><td class="${difClasse(l.diferenca)}">${fmt.pp(l.diferenca)}</td>
+        <td>${fmt.n(l.sacasA, 1)}</td><td>${fmt.n(l.sacasB, 1)}</td><td class="${difClasse(dif(l), 0.5)}">${fmt.n(dif(l), 1)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><th class="esq">Total</th><th></th><th></th><th></th><th>${fmt.n(tA, 1)}</th><th>${fmt.n(tB, 1)}</th><th>${fmt.n(saldoAB ? tA - tB : tB - tA, 1)}</th></tr></tfoot></table></div>`;
+  }
+  function graficoBebida(id, linhas, rotA, rotB) {
+    if (!linhas || !linhas.length) return null;
+    return grafico(id, {
+      type: 'bar',
+      data: { labels: linhas.map((l) => l.bebida), datasets: [
+        { label: rotA, data: linhas.map((l) => l.pctA), backgroundColor: cor('--amostra'), borderRadius: 4, maxBarThickness: 34 },
+        { label: rotB, data: linhas.map((l) => l.pctB), backgroundColor: cor('--entrada'), borderRadius: 4, maxBarThickness: 34 },
+      ] },
+      options: { interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, boxHeight: 12 } },
+          tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt.pct(c.parsed.y)}`, afterBody: (it) => 'Diferença: ' + fmt.pp(linhas[it[0].dataIndex].diferenca) } } },
+        scales: { y: { beginAtZero: true, ticks: { callback: (v) => v + '%' }, grid: { color: cor('--line') } }, x: { grid: { display: false } } } },
+    });
+  }
+  // bebida do lote: vermelho quando não bate com a bebida da amostra
+  function bebidaLote(l) {
+    if (!l.bebida) return '–';
+    if (l.bebidaConfere === false) return `<span class="pill ruim" title="Bebida diferente da amostra">${esc(l.bebida)}</span>`;
+    return esc(l.bebida);
+  }
+
   function registrar(r) { relatorios.push(r); }
 
   // ---------- Menu lateral dinâmico ----------
@@ -153,5 +185,5 @@ window.BI = (() => {
 
   const graficosAtivos = () => [...graficos.entries()];
 
-  return { registrar, iniciar, graficosAtivos, api, fmt, esc, grafico, cor, aderenciaPill, difClasse };
+  return { registrar, iniciar, graficosAtivos, api, fmt, esc, grafico, cor, aderenciaPill, difClasse, tabelaBebida, graficoBebida, bebidaLote };
 })();

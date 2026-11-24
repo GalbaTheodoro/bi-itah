@@ -1,6 +1,6 @@
 // Relatório: Amostra vendida (contrato da guia de embarque) × Lotes embarcados
 (() => {
-  const { api, fmt, esc, grafico, cor, aderenciaPill, difClasse } = BI;
+  const { api, fmt, esc, grafico, cor, aderenciaPill, difClasse, tabelaBebida, graficoBebida, bebidaLote } = BI;
   const estado = { filtros: {}, chave: null, busca: '', dados: null, detalhes: new Map(), limite: 200 };
   const PAGINA = 200; // linhas da lista por vez (lista enorme deixa a tela lenta)
   const chaveDet = (k) => k + '|' + JSON.stringify(estado.filtros);
@@ -59,6 +59,7 @@
       data: { labels: guias.map((g) => g.guia), datasets: [
         { label: 'Aderência peneira', data: guias.map((g) => g.aderenciaPeneira), backgroundColor: cor('--amostra'), borderRadius: 4, maxBarThickness: 34 },
         { label: 'Aderência tipo', data: guias.map((g) => g.aderenciaTipo), backgroundColor: cor('--entrada'), borderRadius: 4, maxBarThickness: 34 },
+        { label: 'Aderência bebida', data: guias.map((g) => g.aderenciaBebida), backgroundColor: cor('--pos'), borderRadius: 4, maxBarThickness: 34 },
       ] },
       options: { interaction: { mode: 'index', intersect: false },
         plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, boxHeight: 12 } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmt.pct(c.parsed.y)}` } } },
@@ -75,17 +76,17 @@
 
   function filtrada() {
     const b = estado.busca.toLowerCase();
-    return estado.dados.embarques.filter((e) => e.consolidado || !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos].join(' ').toLowerCase().includes(b));
+    return estado.dados.embarques.filter((e) => e.consolidado || !b || [e.guia, e.contrato, e.cliente, e.amostras, e.tipos, e.bebidasLotes].join(' ').toLowerCase().includes(b));
   }
   function linhasLista() {
     const lista = filtrada(), mostrar = lista.slice(0, estado.limite);
     const resto = lista.length - mostrar.length;
     return mostrar.map((e) => `<tr class="click ${e.consolidado ? 'consol' : ''} ${e.chave === estado.chave ? 'sel' : ''}" data-chave="${esc(e.chave)}"><td>${e.consolidado ? '<b>Σ Todas</b> (' + esc(e.guia) + ')' : esc(e.guia)}</td><td>${periodo(e)}</td><td>${esc(e.contrato)}</td>
             <td class="esq">${esc(e.cliente)}</td><td class="esq">${esc(e.amostras || 'sem amostra')}</td><td>${fmt.n(e.sacas, 1)}</td>
-            <td>${aderenciaPill(e.aderenciaPeneira)}</td><td>${aderenciaPill(e.aderenciaTipo)}</td><td>${n(e.defeitoAmostra)}</td>
+            <td>${aderenciaPill(e.aderenciaPeneira)}</td><td>${aderenciaPill(e.aderenciaTipo)}</td><td title="${esc(e.bebidasLotes || '')}">${aderenciaPill(e.aderenciaBebida)}</td><td>${n(e.defeitoAmostra)}</td>
             <td class="${e.difDefeito > 0 ? 'neg' : e.difDefeito < 0 ? 'pos' : ''}">${n(e.defeitoLotes)}</td></tr>`).join('')
-      + (resto > 0 ? `<tr class="mais"><td colspan="10"><button type="button" class="btn sec" id="em-mais">Mostrar mais ${fmt.n(Math.min(resto, PAGINA))} de ${fmt.n(resto)} restantes</button></td></tr>` : '')
-      + (!lista.length ? '<tr><td colspan="10" class="vazio">Nenhum embarque encontrado.</td></tr>' : '');
+      + (resto > 0 ? `<tr class="mais"><td colspan="11"><button type="button" class="btn sec" id="em-mais">Mostrar mais ${fmt.n(Math.min(resto, PAGINA))} de ${fmt.n(resto)} restantes</button></td></tr>` : '')
+      + (!lista.length ? '<tr><td colspan="11" class="vazio">Nenhum embarque encontrado.</td></tr>' : '');
   }
   function ligarLista() {
     const corpo = document.getElementById('em-corpo');
@@ -111,12 +112,16 @@
         <div class="kpi"><div class="t">Embarques</div><div class="v">${fmt.n(k.embarques)}</div><div class="d">${fmt.n(k.comAmostra)} com amostra · ${fmt.n(k.sacas)} sacas</div></div>
         <div class="kpi"><div class="t">Aderência peneira</div><div class="v">${k.aderenciaPeneira === null ? '–' : fmt.pct(k.aderenciaPeneira)}</div><div class="d">amostra × classificação dos lotes</div></div>
         <div class="kpi"><div class="t">Aderência tipo de produto</div><div class="v">${k.aderenciaTipo === null ? '–' : fmt.pct(k.aderenciaTipo)}</div><div class="d">amostra × tipo dos lotes</div></div>
+        <div class="kpi"><div class="t">Aderência bebida</div><div class="v">${k.aderenciaBebida === null ? '–' : fmt.pct(k.aderenciaBebida)}</div><div class="d">${fmt.n(k.bebidaDiferente)} embarques com bebida diferente${k.semBebida ? ' · ' + fmt.n(k.semBebida) + ' sc sem bebida' : ''}</div></div>
         <div class="kpi"><div class="t">Defeito amostra / lotes</div><div class="v">${n(k.defeitoAmostra)} / ${n(k.defeitoLotes)}</div><div class="d">${k.acimaDefeito} embarques com lotes acima da amostra</div></div>
       </div>
       <div class="grade">
+        <div class="card"><h2>Bebida: amostra vendida × embarcado</h2><p class="sub">Todos os embarques do filtro · lotes ponderados pelas sacas</p><div class="grafico"><canvas id="em-g-beb-geral"></canvas></div></div>
+        <div class="card"><h2>Detalhe por bebida</h2>${tabelaBebida(d.bebidas, 'Amostra', 'Embarcado', { sacasB: 'Sacas embarcadas' })}
+          <div class="legenda-calc">* Sacas esperadas = sacas embarcadas × % da bebida na amostra do contrato. Embarques cuja amostra não tem bebida e lotes sem bebida ficam fora da conta.</div></div>
         <div class="card ${resumo ? '' : 'full'}"><h2>Embarques</h2><p class="sub">Guia de embarque + contrato de venda · toque para detalhar</p>
           <input class="busca" id="em-busca" placeholder="Buscar guia, contrato, cliente, amostra ou tipo" value="${esc(estado.busca)}">
-          <div class="tabela lista-contratos"><table><thead><tr><th>Guia</th><th>Data</th><th>Contrato</th><th class="esq">Cliente</th><th class="esq">Amostra</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Defeito am.</th><th>Defeito lotes</th></tr></thead>
+          <div class="tabela lista-contratos"><table><thead><tr><th>Guia</th><th>Data</th><th>Contrato</th><th class="esq">Cliente</th><th class="esq">Amostra</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Ader. bebida</th><th>Defeito am.</th><th>Defeito lotes</th></tr></thead>
           <tbody id="em-corpo">${linhasLista()}</tbody></table></div></div>
         ${resumo && !det ? `<div class="card" id="em-det"><h2>${resumo.consolidado ? `Contrato ${esc(resumo.contrato)} · todas as ${esc(resumo.guia)}` : `${esc(resumo.guia)} · ${esc(resumo.contrato)}`}</h2>
           ${detDados && detDados.erro ? `<div class="aviso">${esc(detDados.erro)}</div>` : '<p class="sub">Carregando detalhe…</p><div class="carregando" style="height:120px"></div>'}</div>` : ''}
@@ -127,6 +132,7 @@
             <div class="kpi"><div class="t">Defeito amostra</div><div class="v">${n(det.defeitoAmostra)}</div></div>
             <div class="kpi"><div class="t">Defeito lotes</div><div class="v ${det.difDefeito > 0 ? 'neg' : ''}">${n(det.defeitoLotes)}</div><div class="d">${det.difDefeito === null ? '' : (det.difDefeito > 0 ? '+' : '') + fmt.n(det.difDefeito, 1) + ' vs amostra'}</div></div>
             <div class="kpi"><div class="t">Umidade lotes</div><div class="v">${det.umidadeLotes === null ? '–' : fmt.pct(det.umidadeLotes)}</div></div>
+            <div class="kpi"><div class="t">Ader. bebida</div><div class="v">${det.aderenciaBebida === null ? '–' : fmt.pct(det.aderenciaBebida)}</div><div class="d">${det.semBebida ? fmt.n(det.semBebida, 1) + ' sc sem bebida' : ''}</div></div>
           </div>
           <div class="grafico"><canvas id="em-g-pen"></canvas></div></div>
         <div class="card"><h2>Classificação: amostra × lotes (peneira)</h2>${tabela(det.peneiras, 'Peneira', 'peneira')}</div>
@@ -134,25 +140,28 @@
         <div class="card"><h2>Por grupo</h2>${tabela(det.grupos, 'Grupo', 'grupo')}
           <div class="tabela" style="margin-top:10px"><table><thead><tr><th>Tipo de produto</th><th class="esq">Grupo(s)</th><th>Sacas</th></tr></thead>
           <tbody>${det.tiposDet.map((t) => `<tr><td>${esc(t.tipo)}</td><td class="esq">${esc(t.grupos)}</td><td>${fmt.n(t.sacas, 1)}</td></tr>`).join('')}</tbody></table></div></div>
+        <div class="card"><h2>Bebida: amostra × lotes embarcados</h2><div class="grafico"><canvas id="em-g-beb"></canvas></div></div>
+        <div class="card"><h2>Bebida do embarque</h2>${tabelaBebida(det.bebidas, 'Amostra', 'Embarcado', { sacasB: 'Sacas embarcadas' })}</div>
         ${det.porGuia ? `
         <div class="card full"><h2>Comparação entre as guias do contrato</h2><p class="sub">Cada guia contra a mesma amostra · toque numa guia para abrir</p>
           <div class="grafico"><canvas id="em-g-guias"></canvas></div>
-          <div class="tabela" style="margin-top:10px"><table><thead><tr><th>Guia</th><th>Data</th><th>Lotes</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Defeito lotes</th><th>Dif. defeito</th><th>Umidade</th></tr></thead>
+          <div class="tabela" style="margin-top:10px"><table><thead><tr><th>Guia</th><th>Data</th><th>Lotes</th><th>Sacas</th><th>Ader. peneira</th><th>Ader. tipo</th><th>Ader. bebida</th><th>Defeito lotes</th><th>Dif. defeito</th><th>Umidade</th></tr></thead>
           <tbody>${det.porGuia.map((g) => `<tr class="click" data-chave="${esc(g.chave)}"><td>${esc(g.guia)}</td><td>${fmt.data(g.data)}</td><td>${g.nLotes}</td><td>${fmt.n(g.sacas, 1)}</td>
-            <td>${aderenciaPill(g.aderenciaPeneira)}</td><td>${aderenciaPill(g.aderenciaTipo)}</td><td>${n(g.defeitoLotes)}</td>
+            <td>${aderenciaPill(g.aderenciaPeneira)}</td><td>${aderenciaPill(g.aderenciaTipo)}</td><td>${aderenciaPill(g.aderenciaBebida)}</td><td>${n(g.defeitoLotes)}</td>
             <td class="${g.difDefeito > 0 ? 'neg' : g.difDefeito < 0 ? 'pos' : ''}">${g.difDefeito === null ? '–' : (g.difDefeito > 0 ? '+' : '') + fmt.n(g.difDefeito, 1)}</td><td>${g.umidadeLotes ? fmt.pct(g.umidadeLotes) : '–'}</td></tr>`).join('')}
-          <tr class="consol"><td><b>Σ Todas</b></td><td>${periodo(det)}</td><td>${det.nLotes}</td><td>${fmt.n(det.sacas, 1)}</td><td>${aderenciaPill(det.aderenciaPeneira)}</td><td>${aderenciaPill(det.aderenciaTipo)}</td><td>${n(det.defeitoLotes)}</td>
+          <tr class="consol"><td><b>Σ Todas</b></td><td>${periodo(det)}</td><td>${det.nLotes}</td><td>${fmt.n(det.sacas, 1)}</td><td>${aderenciaPill(det.aderenciaPeneira)}</td><td>${aderenciaPill(det.aderenciaTipo)}</td><td>${aderenciaPill(det.aderenciaBebida)}</td><td>${n(det.defeitoLotes)}</td>
             <td class="${det.difDefeito > 0 ? 'neg' : det.difDefeito < 0 ? 'pos' : ''}">${det.difDefeito === null ? '–' : (det.difDefeito > 0 ? '+' : '') + fmt.n(det.difDefeito, 1)}</td><td>${det.umidadeLotes ? fmt.pct(det.umidadeLotes) : '–'}</td></tr></tbody></table></div></div>` : ''}
         <div class="card full"><h2>Lotes embarcados</h2>
           <div class="tabela"><table><thead><tr><th>Lote</th>${det.porGuia ? '<th>Guia</th>' : ''}<th class="esq">Bebida</th><th class="esq">Tipo</th><th>Sacas</th><th>Defeito</th><th>Umidade</th>${pens.map((p) => `<th>${esc(p)}</th>`).join('')}</tr></thead>
           <tbody>${det.amostrasDet.map((a) => `<tr style="background:#eef4fd"><td><b>Amostra ${esc(a.amostra)}</b></td>${det.porGuia ? '<td></td>' : ''}<td class="esq"><b>${esc(a.bebida || '–')}</b></td><td></td><td></td><td><b>${n(a.defeito)}</b></td><td></td>${pens.map((p) => `<td><b>${a.pct[p] ? fmt.pct(a.pct[p]) : '–'}</b></td>`).join('')}</tr>`).join('')}
-            ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}</td>${det.porGuia ? `<td>${esc(l.guia)}</td>` : ''}<td class="esq">${esc(l.bebida || '–')}</td><td class="esq">${esc(l.tipo)}</td><td>${fmt.n(l.sacas, 1)}</td><td class="${det.defeitoAmostra !== null && l.defeito > det.defeitoAmostra ? 'neg' : ''}">${n(l.defeito)}</td><td>${l.umidade ? fmt.pct(l.umidade) : '–'}</td>
+            ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}</td>${det.porGuia ? `<td>${esc(l.guia)}</td>` : ''}<td class="esq">${bebidaLote(l)}</td><td class="esq">${esc(l.tipo)}</td><td>${fmt.n(l.sacas, 1)}</td><td class="${det.defeitoAmostra !== null && l.defeito > det.defeitoAmostra ? 'neg' : ''}">${n(l.defeito)}</td><td>${l.umidade ? fmt.pct(l.umidade) : '–'}</td>
               ${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : ''}
       </div>
       <div class="legenda-calc">Amostra = amostra do contrato de venda ligado à guia de embarque (média se houver mais de uma). Cliente = comprador do contrato de venda (se vazio, o destino da guia de saída).
       Ao filtrar um contrato com várias guias, a linha "Σ Todas" junta todos os lotes embarcados no contrato contra a amostra. Lotes ponderados pelas sacas embarcadas.
       Defeito do lote = campo Defeito do lote (ou o tipo de defeito, se vazio). Tipos de produto ligados aos grupos de config/mapeamento-gs.json.</div>`;
-    if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); if (det.porGuia) gGuias('em-g-guias', det.porGuia); }
+    graficoBebida('em-g-beb-geral', d.bebidas, 'Amostra vendida', 'Lotes embarcados');
+    if (det) { gComp('em-g-pen', det.peneiras, 'peneira'); gComp('em-g-tipo', det.grupos, 'grupo'); graficoBebida('em-g-beb', det.bebidas, 'Amostra vendida', 'Lotes embarcados'); if (det.porGuia) gGuias('em-g-guias', det.porGuia); }
     const bx = document.getElementById('em-busca');
     let t = null;
     bx.oninput = () => { clearTimeout(t); t = setTimeout(() => { estado.busca = bx.value; estado.limite = PAGINA; document.getElementById('em-corpo').innerHTML = linhasLista(); ligarLista(); }, 150); };

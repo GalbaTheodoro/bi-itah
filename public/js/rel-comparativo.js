@@ -1,6 +1,7 @@
 // Relatório: Classificação da Amostra de compra x Classificação dos Lotes de entrada
 (() => {
-  const { api, fmt, esc, grafico, cor, aderenciaPill, difClasse } = BI;
+  const { api, fmt, esc, grafico, cor, aderenciaPill, difClasse, tabelaBebida, graficoBebida, bebidaLote } = BI;
+  const LEG_BEB = '<div class="legenda-calc">Bebida da amostra (tb_classificacao) × bebida dos lotes de entrada, ponderada pelo volume. * Sacas esperadas = sacas entradas × % da bebida na amostra. Contratos cuja amostra não tem bebida e lotes sem bebida ficam fora da conta.</div>';
 
   const estado = { aba: 'geral', filtros: {}, fornecedor: null, contrato: null, busca: '', dados: null, opcoes: null };
 
@@ -109,11 +110,14 @@
         <div class="kpi"><div class="t">Volume entrado</div><div class="v">${fmt.n(k.volumeEntrado)}</div><div class="d">${fmt.n(k.lotes)} lotes</div></div>
         <div class="kpi"><div class="t">Aderência à amostra</div><div class="v">${k.aderencia === null ? '–' : fmt.pct(k.aderencia)}</div><div class="d">% do volume dentro do padrão</div></div>
         <div class="kpi"><div class="t">Sem entrada / sem amostra</div><div class="v">${fmt.n(k.contratosSemEntrada)} / ${fmt.n(k.contratosSemAmostra)}</div><div class="d">contratos</div></div>
+        <div class="kpi"><div class="t">Aderência bebida</div><div class="v">${k.aderenciaBebida === null ? '–' : fmt.pct(k.aderenciaBebida)}</div><div class="d">${k.semBebida ? fmt.n(k.semBebida) + ' sacas sem bebida' : 'amostra × lotes'}</div></div>
       </div>
       ${d.geral.length ? `<div class="grade">
         <div class="card"><h2>Amostra x Entrada por peneira</h2><p class="sub">% de cada peneira (entrada ponderada pelo volume dos lotes)</p><div class="grafico"><canvas id="g-geral"></canvas></div></div>
         <div class="card"><h2>Diferença por peneira</h2><p class="sub">Verde: entrou mais que a amostra · Vermelho: entrou menos</p><div class="grafico"><canvas id="g-geral-dif"></canvas></div></div>
         <div class="card full"><h2>Detalhe por peneira</h2>${tabelaPeneiras(d.geral)}</div>
+        <div class="card"><h2>Bebida: amostra × entrada</h2><p class="sub">% de cada bebida (entrada ponderada pelo volume dos lotes)</p><div class="grafico"><canvas id="g-geral-beb"></canvas></div></div>
+        <div class="card"><h2>Detalhe por bebida</h2>${tabelaBebida(d.bebidas, 'Amostra', 'Entrada', { sacasB: 'Sacas entradas' })}${LEG_BEB}</div>
       </div>` : '<div class="card vazio">Nenhum contrato com amostra e entrada nesse filtro.</div>'}`;
   }
 
@@ -126,11 +130,13 @@
       <div class="card"><h2>Aderência por fornecedor</h2><p class="sub">Quanto do volume entregue ficou no padrão da amostra</p>
         <div class="grafico ${lista.length > 8 ? 'alto' : ''}"><canvas id="g-forn"></canvas></div></div>
       <div class="card"><h2>Fornecedores</h2><p class="sub">Toque numa linha para ver o detalhe</p>
-        <div class="tabela"><table><thead><tr><th>Fornecedor</th><th>Contratos</th><th>Contratado</th><th>Entrado</th><th>Aderência</th></tr></thead>
+        <div class="tabela"><table><thead><tr><th>Fornecedor</th><th>Contratos</th><th>Contratado</th><th>Entrado</th><th>Aderência</th><th>Ader. bebida</th></tr></thead>
         <tbody>${d.fornecedores.map((f) => `<tr class="click ${f.fornecedor === estado.fornecedor ? 'sel' : ''}" data-forn="${esc(f.fornecedor)}">
-          <td>${esc(f.fornecedor)}</td><td>${f.contratos}</td><td>${fmt.n(f.quantidade)}</td><td>${fmt.n(f.volumeEntrado)}</td><td>${aderenciaPill(f.aderencia)}</td></tr>`).join('')}</tbody></table></div></div>
+          <td>${esc(f.fornecedor)}</td><td>${f.contratos}</td><td>${fmt.n(f.quantidade)}</td><td>${fmt.n(f.volumeEntrado)}</td><td>${aderenciaPill(f.aderencia)}</td><td>${aderenciaPill(f.aderenciaBebida)}</td></tr>`).join('')}</tbody></table></div></div>
       ${sel ? `<div class="card"><h2>${esc(sel.fornecedor)}</h2><p class="sub">Amostra ponderada pela quantidade contratada · entrada ponderada pelo volume</p><div class="grafico"><canvas id="g-forn-sel"></canvas></div></div>
-      <div class="card"><h2>Peneiras · ${esc(sel.fornecedor)}</h2>${tabelaPeneiras(sel.peneiras)}</div>` : ''}
+      <div class="card"><h2>Peneiras · ${esc(sel.fornecedor)}</h2>${tabelaPeneiras(sel.peneiras)}</div>
+      <div class="card"><h2>Bebida · ${esc(sel.fornecedor)}</h2><p class="sub">Aderência ${sel.aderenciaBebida === null ? '–' : fmt.pct(sel.aderenciaBebida)}</p><div class="grafico"><canvas id="g-forn-beb"></canvas></div></div>
+      <div class="card"><h2>Detalhe por bebida · ${esc(sel.fornecedor)}</h2>${tabelaBebida(sel.bebidas, 'Amostra', 'Entrada', { sacasB: 'Sacas entradas' })}${LEG_BEB}</div>` : ''}
     </div>`;
   }
 
@@ -142,10 +148,10 @@
     return `<div class="grade">
       <div class="card ${det ? '' : 'full'}"><h2>Contratos</h2><p class="sub">${fmt.n(lista.length)} contratos · toque para detalhar</p>
         <input class="busca" id="cmp-busca" placeholder="Buscar contrato, fornecedor ou amostra" value="${esc(estado.busca)}">
-        <div class="tabela lista-contratos"><table><thead><tr><th>Contrato</th><th class="esq">Fornecedor</th><th>Data</th><th>Qtde</th><th>Entrado</th><th>Lotes</th><th>Aderência</th></tr></thead>
+        <div class="tabela lista-contratos"><table><thead><tr><th>Contrato</th><th class="esq">Fornecedor</th><th>Data</th><th>Qtde</th><th>Entrado</th><th>Lotes</th><th>Aderência</th><th>Ader. bebida</th></tr></thead>
         <tbody>${lista.map((c) => `<tr class="click ${c.contrato === estado.contrato ? 'sel' : ''}" data-contrato="${esc(c.contrato)}">
           <td>${esc(c.contrato)}</td><td class="esq">${esc(c.fornecedor)}</td><td>${fmt.data(c.dataContrato)}</td><td>${fmt.n(c.quantidade)}</td>
-          <td>${fmt.n(c.volumeEntrado)}</td><td>${c.nLotes}</td><td>${c.nAmostras ? aderenciaPill(c.aderencia) : '<span class="pill">sem amostra</span>'}</td></tr>`).join('')}</tbody></table></div></div>
+          <td>${fmt.n(c.volumeEntrado)}</td><td>${c.nLotes}</td><td>${c.nAmostras ? aderenciaPill(c.aderencia) : '<span class="pill">sem amostra</span>'}</td><td>${aderenciaPill(c.aderenciaBebida)}</td></tr>`).join('')}</tbody></table></div></div>
       ${det ? `
       <div class="card"><h2>${esc(det.contrato)} · ${esc(det.fornecedor)}</h2>
         <p class="sub">Contrato de ${fmt.data(det.dataContrato)} · Amostra(s): ${esc(det.amostras || 'nenhuma')}</p>
@@ -154,6 +160,7 @@
           <div class="kpi"><div class="t">Entrado</div><div class="v">${fmt.n(det.volumeEntrado, 1)}</div><div class="d">${det.nLotes} lotes</div></div>
           <div class="kpi"><div class="t">Saldo</div><div class="v">${fmt.n(det.saldo, 1)}</div></div>
           <div class="kpi"><div class="t">Aderência</div><div class="v">${det.aderencia === null ? '–' : fmt.pct(det.aderencia)}</div></div>
+          <div class="kpi"><div class="t">Ader. bebida</div><div class="v">${det.aderenciaBebida === null ? '–' : fmt.pct(det.aderenciaBebida)}</div><div class="d">${esc(det.bebidasAmostra || 'amostra sem bebida')}</div></div>
         </div>
         <div class="grafico"><canvas id="g-contrato"></canvas></div></div>
       <div class="card"><h2>Peneiras do contrato</h2>
@@ -162,6 +169,8 @@
           <td class="${difClasse(l.diferenca)}">${fmt.pp(l.diferenca)}</td><td>${fmt.n(l.sacasPrevistas, 1)}</td><td>${fmt.n(l.sacasEntradas, 1)}</td>
           <td>${fmt.n(l.sacasPrevistas - l.sacasEntradas, 1)}</td></tr>`).join('')}</tbody></table></div>
         <div class="legenda-calc">* Sacas contrato = quantidade do contrato × % da amostra.</div></div>
+      <div class="card"><h2>Bebida: amostra × entrada</h2><div class="grafico"><canvas id="g-contrato-beb"></canvas></div></div>
+      <div class="card"><h2>Bebida do contrato</h2>${tabelaBebida(det.bebidas, 'Amostra', 'Entrada', { sacasB: 'Sacas entradas' })}${det.semBebida ? `<div class="legenda-calc">${fmt.n(det.semBebida, 1)} sacas de lotes sem bebida (fora da conta).</div>` : ''}</div>
       <div class="card"><h2>Aderência de cada lote</h2><p class="sub">Comparando a classificação do lote com a amostra do contrato</p>
         <div class="grafico ${det.lotes.length > 8 ? 'alto' : ''}"><canvas id="g-lotes"></canvas></div></div>
       <div class="card full"><h2>Lotes de entrada</h2>
@@ -169,7 +178,7 @@
         <tbody>
           <tr style="background:#eef3f9"><td><b>Amostra</b></td><td class="esq"><b>${esc([...new Set((det.amostrasDetalhe || []).map((a) => a.bebida).filter(Boolean))].join(', ') || '–')}</b></td><td></td><td></td>${pens.map((p) => `<td><b>${fmt.pct(det.peneiras.find((x) => x.peneira === p).amostra)}</b></td>`).join('')}<td></td></tr>
           ${det.lotes.map((l) => `<tr><td>${esc(l.lote)}${l.somaOriginal !== 100 ? ` <span class="pill medio" title="Classificação original somava ${fmt.n(l.somaOriginal, 1)}% e foi ajustada para 100%">${fmt.n(l.somaOriginal)}%</span>` : ''}</td>
-          <td class="esq">${esc(l.bebida || '–')}</td><td>${fmt.data(l.data)}</td><td>${fmt.n(l.volume, 1)}</td>${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}
+          <td class="esq">${bebidaLote(l)}</td><td>${fmt.data(l.data)}</td><td>${fmt.n(l.volume, 1)}</td>${pens.map((p) => `<td>${l.pct[p] ? fmt.pct(l.pct[p]) : '–'}</td>`).join('')}
           <td>${aderenciaPill(l.divergencia === null ? null : 100 - l.divergencia)}</td></tr>`).join('')}
         </tbody></table></div></div>` : ''}
     </div>`;
@@ -181,18 +190,19 @@
     document.querySelectorAll('#cmp-abas button').forEach((b) => b.classList.toggle('ativo', b.dataset.aba === estado.aba));
     if (estado.aba === 'geral') {
       area.innerHTML = abaGeral(d);
-      if (d.geral.length) { graficoComparativo('g-geral', d.geral); graficoDiferenca('g-geral-dif', d.geral); }
+      if (d.geral.length) { graficoComparativo('g-geral', d.geral); graficoDiferenca('g-geral-dif', d.geral); graficoBebida('g-geral-beb', d.bebidas, 'Amostra (compra)', 'Lotes de entrada'); }
     } else if (estado.aba === 'fornecedor') {
       area.innerHTML = abaFornecedor(d);
       const lista = d.fornecedores.filter((f) => f.aderencia !== null);
       if (lista.length) graficoAderencia('g-forn', lista, (f) => f.fornecedor);
       const sel = d.fornecedores.find((f) => f.fornecedor === estado.fornecedor);
-      if (sel) graficoComparativo('g-forn-sel', sel.peneiras);
+      if (sel) { graficoComparativo('g-forn-sel', sel.peneiras); graficoBebida('g-forn-beb', sel.bebidas, 'Amostra (compra)', 'Lotes de entrada'); }
       area.querySelectorAll('tr[data-forn]').forEach((tr) => tr.onclick = () => { estado.fornecedor = tr.dataset.forn; desenhar(); });
     } else {
       area.innerHTML = abaContrato(d);
       if (d.detalhe) {
         graficoComparativo('g-contrato', d.detalhe.peneiras);
+        graficoBebida('g-contrato-beb', d.detalhe.bebidas, 'Amostra (compra)', 'Lotes de entrada');
         const lotes = d.detalhe.lotes.filter((l) => l.divergencia !== null).map((l) => ({ ...l, aderencia: Math.round((100 - l.divergencia) * 10) / 10 }));
         if (lotes.length) graficoAderencia('g-lotes', lotes, (l) => (window.innerWidth < 600 ? l.lote : `${l.lote} (${fmt.data(l.data)})`));
       }
